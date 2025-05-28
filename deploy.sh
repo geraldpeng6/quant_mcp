@@ -153,54 +153,173 @@ else
     echo -e "${GREEN}以普通用户身份运行，将为当前用户安装uv${NC}"
 fi
 
-if ! command_exists uv; then
-    # 如果是root用户（sudo运行），安装到/usr/local/bin
+# 直接下载和安装uv二进制文件的函数
+install_uv_binary() {
+    echo "直接下载uv二进制文件..."
+    
+    # 检测系统架构
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)
+            UV_ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            UV_ARCH="aarch64"
+            ;;
+        *)
+            echo -e "${RED}不支持的架构: $ARCH${NC}"
+            return 1
+            ;;
+    esac
+    
+    # 检测系统类型
+    OS=$(uname -s)
+    case "$OS" in
+        Linux)
+            UV_OS="unknown-linux-gnu"
+            ;;
+        Darwin)
+            UV_OS="apple-darwin"
+            ;;
+        *)
+            echo -e "${RED}不支持的操作系统: $OS${NC}"
+            return 1
+            ;;
+    esac
+    
+    # 下载最新版本的uv二进制文件
+    TMP_DIR=$(mktemp -d)
+    cd "$TMP_DIR" || return 1
+    
+    UV_VERSION="0.1.27"  # 可以调整为最新版本
+    DOWNLOAD_URL="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_VERSION-$UV_ARCH-$UV_OS.tar.gz"
+    
+    echo "下载URL: $DOWNLOAD_URL"
+    
+    if ! curl -sSfL "$DOWNLOAD_URL" -o uv.tar.gz; then
+        echo -e "${RED}下载uv二进制文件失败${NC}"
+        return 1
+    fi
+    
+    # 解压
+    if ! tar -xzf uv.tar.gz; then
+        echo -e "${RED}解压uv二进制文件失败${NC}"
+        return 1
+    fi
+    
+    # 移动到目标位置
     if [ "$IS_ROOT" = true ]; then
-        # 创建临时目录
-        TMP_DIR=$(mktemp -d)
-        cd "$TMP_DIR" || exit 1
-        
-        # 下载并安装uv
-        echo "下载uv安装脚本..."
-        curl -sSf https://astral.sh/uv/install.sh -o install.sh
-        chmod +x install.sh
-        
-        # 安装到/usr/local/bin（系统范围）
-        echo "安装uv到系统路径..."
-        ./install.sh --system
-        check_error "uv系统安装失败"
-        
-        # 检查uv是否安装成功
-        if command_exists uv; then
-            echo -e "${GREEN}uv已成功安装到系统路径${NC}"
-        else
-            echo -e "${RED}uv安装成功但命令不可用，请检查PATH${NC}"
-            export PATH="/usr/local/bin:$PATH"
-            if command_exists uv; then
-                echo -e "${GREEN}添加/usr/local/bin到PATH后，uv命令可用${NC}"
-            else
-                echo -e "${RED}即使添加/usr/local/bin到PATH后，uv命令仍不可用${NC}"
-                exit 1
+        # 作为root用户，安装到系统目录
+        cp -f uv /usr/local/bin/
+        chmod +x /usr/local/bin/uv
+        echo "uv二进制文件已安装到: /usr/local/bin/uv"
+        ls -la /usr/local/bin/uv
+    else
+        # 普通用户，安装到用户目录
+        mkdir -p "$HOME/.local/bin"
+        cp -f uv "$HOME/.local/bin/"
+        chmod +x "$HOME/.local/bin/uv"
+        export PATH="$HOME/.local/bin:$PATH"
+        echo "uv二进制文件已安装到: $HOME/.local/bin/uv"
+        ls -la "$HOME/.local/bin/uv"
+    fi
+    
+    # 回到原目录并清理
+    cd - > /dev/null || return 1
+    rm -rf "$TMP_DIR"
+    
+    # 验证安装
+    if command_exists uv; then
+        echo -e "${GREEN}uv二进制文件安装成功!${NC}"
+        uv --version
+        return 0
+    else
+        echo -e "${RED}uv安装后仍然不可用${NC}"
+        if [ "$IS_ROOT" = true ]; then
+            echo "检查/usr/local/bin是否在PATH中:"
+            echo "PATH = $PATH"
+            if [ -f "/usr/local/bin/uv" ]; then
+                echo "uv文件存在，但不在PATH中，尝试直接调用:"
+                /usr/local/bin/uv --version || echo "无法执行uv二进制文件"
             fi
         fi
-        
-        # 回到原目录并清理
-        cd - || exit 1
-        rm -rf "$TMP_DIR"
+        return 1
+    fi
+}
+
+if ! command_exists uv; then
+    echo "尝试安装uv..."
+    
+    # 首先尝试直接下载二进制文件安装方式
+    if install_uv_binary; then
+        echo -e "${GREEN}通过二进制安装uv成功${NC}"
     else
-        # 普通用户安装
-        curl -sSf https://astral.sh/uv/install.sh | sh
-        check_error "uv安装失败"
-        export PATH="$HOME/.cargo/bin:$PATH"
+        echo -e "${YELLOW}二进制安装失败，尝试使用安装脚本...${NC}"
         
-        # 确保当前会话可以使用uv
-        if ! command_exists uv; then
-            if [ -f "$HOME/.cargo/env" ]; then
-                source "$HOME/.cargo/env"
-                echo -e "${GREEN}已加载Cargo环境${NC}"
+        # 如果是root用户（sudo运行），安装到/usr/local/bin
+        if [ "$IS_ROOT" = true ]; then
+            # 创建临时目录
+            TMP_DIR=$(mktemp -d)
+            cd "$TMP_DIR" || exit 1
+            
+            # 下载并安装uv
+            echo "下载uv安装脚本..."
+            curl -sSf https://astral.sh/uv/install.sh -o install.sh
+            chmod +x install.sh
+            
+            # 打印脚本内容以便调试
+            echo "安装脚本内容摘要:"
+            head -n 20 install.sh
+            
+            # 安装到/usr/local/bin（系统范围）
+            echo "安装uv到系统路径..."
+            ./install.sh --system
+            INSTALL_RESULT=$?
+            
+            if [ $INSTALL_RESULT -ne 0 ]; then
+                echo -e "${RED}uv安装脚本失败，返回代码: $INSTALL_RESULT${NC}"
+                cat install.log 2>/dev/null || echo "没有安装日志"
+            fi
+            
+            # 检查安装位置
+            echo "查找已安装的uv二进制文件..."
+            find /usr/local -name uv -type f 2>/dev/null || echo "在/usr/local中未找到uv"
+            find /usr -name uv -type f 2>/dev/null | head -n 5 || echo "在/usr中未找到uv"
+            
+            # 检查uv是否安装成功
+            if command_exists uv; then
+                echo -e "${GREEN}uv已成功安装到系统路径${NC}"
             else
-                echo -e "${YELLOW}警告: $HOME/.cargo/env 不存在，尝试添加 ~/.cargo/bin 到 PATH${NC}"
-                export PATH="$HOME/.cargo/bin:$PATH"
+                echo -e "${RED}uv安装后命令不可用，尝试修复...${NC}"
+                
+                # 尝试直接安装二进制文件
+                if ! install_uv_binary; then
+                    echo -e "${YELLOW}直接安装二进制文件也失败，将使用传统pip${NC}"
+                fi
+            fi
+            
+            # 回到原目录并清理
+            cd - || exit 1
+            rm -rf "$TMP_DIR"
+        else
+            # 普通用户安装
+            curl -sSf https://astral.sh/uv/install.sh | sh
+            
+            # 确保当前会话可以使用uv
+            export PATH="$HOME/.cargo/bin:$PATH"
+            if ! command_exists uv; then
+                if [ -f "$HOME/.cargo/env" ]; then
+                    source "$HOME/.cargo/env"
+                    echo -e "${GREEN}已加载Cargo环境${NC}"
+                else
+                    echo -e "${YELLOW}警告: $HOME/.cargo/env 不存在，尝试添加 ~/.cargo/bin 到 PATH${NC}"
+                    export PATH="$HOME/.cargo/bin:$PATH"
+                fi
+                
+                if ! command_exists uv; then
+                    echo -e "${YELLOW}标准安装失败，尝试直接安装二进制文件...${NC}"
+                    install_uv_binary
+                fi
             fi
         fi
     fi
@@ -210,24 +329,17 @@ if ! command_exists uv; then
         echo -e "${GREEN}uv已成功安装和配置${NC}"
         uv --version
     else
-        echo -e "${RED}错误: 安装后uv命令仍不可用${NC}"
-        exit 1
+        echo -e "${YELLOW}警告: 无法安装uv，将使用传统Python工具${NC}"
+        USE_TRADITIONAL_TOOLS=true
     fi
 else
     echo -e "${GREEN}uv已安装${NC}"
     uv --version
     
     # 如果是root用户且uv不在系统路径，可能需要更新
-    if [ "$IS_ROOT" = true ] && [ ! -f "/usr/local/bin/uv" ]; then
-        echo -e "${YELLOW}以root用户运行但uv不在系统路径，尝试安装到系统路径...${NC}"
-        TMP_DIR=$(mktemp -d)
-        cd "$TMP_DIR" || exit 1
-        curl -sSf https://astral.sh/uv/install.sh -o install.sh
-        chmod +x install.sh
-        ./install.sh --system
-        cd - || exit 1
-        rm -rf "$TMP_DIR"
-        echo -e "${GREEN}uv已更新到系统路径${NC}"
+    if [ "$IS_ROOT" = true ] && ! command -v uv >/dev/null 2>&1; then
+        echo -e "${YELLOW}以root用户运行但uv命令路径异常，尝试重新安装...${NC}"
+        install_uv_binary
     fi
 fi
 
@@ -239,8 +351,7 @@ if [ ! -d "$PROJECT_DIR/.venv" ]; then
     
     # 确保uv命令可用
     if ! command_exists uv; then
-        echo -e "${RED}错误: uv命令不可用，无法创建虚拟环境${NC}"
-        echo -e "${YELLOW}尝试使用传统方式创建虚拟环境...${NC}"
+        echo -e "${RED}错误: uv命令不可用，使用传统方式创建虚拟环境...${NC}"
         python3 -m venv "$PROJECT_DIR/.venv"
         check_error "虚拟环境创建失败"
     else
