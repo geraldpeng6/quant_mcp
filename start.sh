@@ -7,6 +7,7 @@
 TRANSPORT="sse"  # 默认使用SSE传输协议
 HOST="0.0.0.0"
 PORT=8000
+HTML_PORT=8081   # HTML服务器端口
 
 # 颜色定义
 GREEN='\033[0;32m'
@@ -22,6 +23,7 @@ show_help() {
     echo "  -t, --transport TRANSPORT 指定传输协议 (stdio, sse, streamable-http) (默认: sse)"
     echo "  -H, --host HOST           指定主机地址 (默认: 0.0.0.0)"
     echo "  -p, --port PORT           指定端口号 (默认: 8000)"
+    echo "  --html-port PORT          指定HTML服务器端口号 (默认: 8081)"
     echo ""
     echo "示例:"
     echo "  $0                        # 使用默认设置启动 (SSE, 0.0.0.0:8000)"
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             PORT="$2"
             shift 2
             ;;
+        --html-port)
+            HTML_PORT="$2"
+            shift 2
+            ;;
         *)
             echo -e "${RED}错误: 未知选项 $1${NC}"
             show_help
@@ -68,6 +74,98 @@ if [ ! -f "server.py" ]; then
     echo -e "${RED}错误: 请在项目根目录运行此脚本${NC}"
     exit 1
 fi
+
+# 获取公网IP - 直接在脚本中实现，不依赖配置文件
+get_public_ip() {
+    local IP=""
+    
+    # 检查IP是否有效（非占位符/保留IP）
+    is_valid_ip() {
+        local ip=$1
+        # 检查是否是有效的IP格式
+        if ! [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            return 1
+        fi
+        
+        # 排除常见测试/示例IP
+        if [[ $ip == "123.45.67.89" || $ip == "1.2.3.4" || $ip == "0.0.0.0" ]]; then
+            return 1
+        fi
+        
+        # 排除回环地址
+        if [[ $ip == "127."* ]]; then
+            return 1
+        fi
+        
+        # 排除保留IP范围
+        local ip1 ip2 ip3 ip4
+        IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$ip"
+        
+        # 排除私有IP（除非明确要求使用）
+        if [[ $ip1 -eq 10 || 
+               ($ip1 -eq 172 && $ip2 -ge 16 && $ip2 -le 31) || 
+               ($ip1 -eq 192 && $ip2 -eq 168) ]]; then
+            return 1
+        fi
+        
+        return 0
+    }
+    
+    echo -e "${YELLOW}尝试获取公网IP地址...${NC}"
+    
+    # 方法1: 直接使用dig查询
+    if command -v dig >/dev/null 2>&1; then
+        echo -e "${YELLOW}尝试使用dig获取IP...${NC}"
+        IP=$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null)
+        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+            echo -e "${GREEN}成功使用dig获取IP: $IP${NC}"
+            echo "$IP"
+            return
+        fi
+    fi
+    
+    # 方法2: 使用外部服务
+    echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
+    IP=$(curl -s -m 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '\n')
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo -e "${GREEN}成功使用checkip.amazonaws.com获取IP: $IP${NC}"
+        echo "$IP"
+        return
+    fi
+    
+    # 方法3: 使用外部服务备选
+    echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
+    IP=$(curl -s -m 5 https://ifconfig.me 2>/dev/null)
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo -e "${GREEN}成功使用ifconfig.me获取IP: $IP${NC}"
+        echo "$IP"
+        return
+    fi
+    
+    # 方法4: 另一个备选服务
+    echo -e "${YELLOW}尝试使用ipinfo.io获取IP...${NC}"
+    IP=$(curl -s -m 5 https://ipinfo.io/ip 2>/dev/null)
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo -e "${GREEN}成功使用ipinfo.io获取IP: $IP${NC}"
+        echo "$IP"
+        return
+    fi
+    
+    # 获取本地IP
+    echo -e "${YELLOW}无法获取公网IP，尝试获取本地IP...${NC}"
+    if command -v hostname >/dev/null 2>&1; then
+        IP=$(hostname -I | awk '{print $1}')
+        if [[ -n "$IP" ]] && [[ $IP != "127.0.0.1" ]]; then
+            echo -e "${YELLOW}使用本地IP: $IP${NC}"
+            echo "$IP"
+            return
+        fi
+    fi
+    
+    # 如果所有方法都失败，返回localhost
+    echo -e "${RED}无法获取有效IP，使用localhost${NC}"
+    echo "localhost"
+}
 
 # 设置虚拟环境
 setup_venv() {
@@ -110,22 +208,77 @@ setup_venv() {
     echo -e "${GREEN}环境设置完成!${NC}"
 }
 
-# 检查并配置Nginx
+# 生成测试HTML文件
+generate_test_html() {
+    local PUBLIC_IP=$1
+    local HTML_PORT=$2
+    
+    echo -e "${YELLOW}生成测试HTML文件...${NC}"
+    
+    # 确保目录存在
+    mkdir -p data/charts
+    
+    # 生成HTML文件
+    cat > data/charts/test.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP HTML服务器测试</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .info { color: blue; }
+        .server-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MCP HTML服务器测试</h1>
+        <p class="success">如果您看到此页面，说明HTML服务器配置成功。</p>
+
+        <div class="server-info">
+            <h2>服务器信息</h2>
+            <p><strong>主机地址:</strong> ${PUBLIC_IP}</p>
+            <p><strong>端口:</strong> ${HTML_PORT}</p>
+            <p><strong>生成时间:</strong> <span id="time"></span></p>
+            <p><strong>客户端IP:</strong> <span id="client-ip">正在获取...</span></p>
+        </div>
+
+        <script>
+            document.getElementById('time').textContent = new Date().toLocaleString();
+
+            // 尝试获取客户端IP
+            fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('client-ip').textContent = data.ip;
+                })
+                .catch(error => {
+                    document.getElementById('client-ip').textContent = '无法获取';
+                });
+        </script>
+    </div>
+</body>
+</html>
+EOF
+
+    echo -e "${GREEN}测试HTML文件已生成: data/charts/test.html${NC}"
+    echo "http://${PUBLIC_IP}:${HTML_PORT}/charts/test.html"
+}
+
+# 配置Nginx
 setup_nginx() {
+    local PUBLIC_IP=$1
+    local HTML_PORT=$2
+    
     echo -e "${YELLOW}检查Nginx配置...${NC}"
 
     # 检查是否有root权限
     if [ "$EUID" -ne 0 ]; then
-        echo -e "${YELLOW}注意: 未使用root权限运行，无法自动配置Nginx。将使用Python生成测试HTML文件。${NC}"
-
-        # 生成测试HTML文件
-        python -c "
-import sys
-sys.path.append('.')
-from utils.html_server import generate_test_html
-url = generate_test_html()
-print(f'测试HTML文件已生成，URL: {url}')
-"
+        echo -e "${YELLOW}注意: 未使用root权限运行，无法自动配置Nginx。${NC}"
         return
     fi
 
@@ -145,8 +298,13 @@ print(f'测试HTML文件已生成，URL: {url}')
     cat > /etc/nginx/conf.d/mcp_html_server.conf << EOF
 # MCP HTML服务器配置
 server {
-    listen 80;
+    listen ${HTML_PORT};
     server_name _;
+
+    # 允许跨域访问
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
 
     # 禁止访问隐藏文件
     location ~ /\\. {
@@ -155,12 +313,16 @@ server {
 
     # 静态文件服务
     location /charts/ {
-        alias $CHARTS_DIR/;
+        alias ${CHARTS_DIR}/;
 
         # 只允许访问HTML文件
         location ~* \\.(html)$ {
             add_header Content-Type text/html;
             add_header Cache-Control "no-cache, no-store, must-revalidate";
+            # 允许跨域访问
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
         }
 
         # 禁止目录列表
@@ -174,7 +336,7 @@ server {
 
     # 默认页面 - 生成一个测试页面
     location = / {
-        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p></body></html>';
+        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p><p>当前时间: <span id="time"></span></p><script>document.getElementById("time").textContent = new Date().toLocaleString();</script></body></html>';
         add_header Content-Type text/html;
     }
 }
@@ -189,15 +351,6 @@ EOF
         echo -e "${YELLOW}重新加载Nginx配置...${NC}"
         nginx -s reload
         echo -e "${GREEN}Nginx配置成功!${NC}"
-
-        # 生成测试HTML文件
-        python -c "
-import sys
-sys.path.append('.')
-from utils.html_server import generate_test_html
-url = generate_test_html()
-print(f'测试HTML文件已生成，URL: {url}')
-"
     else
         echo -e "${RED}Nginx配置测试失败，请检查配置文件。${NC}"
     fi
@@ -212,50 +365,47 @@ main() {
 
     # 确保必要的目录存在
     mkdir -p data/logs data/klines data/charts data/temp data/config data/backtest data/templates
-
-    # 设置Nginx
-    setup_nginx
+    
+    # 获取公网IP
+    PUBLIC_IP=$(get_public_ip)
+    echo -e "${GREEN}将使用IP: $PUBLIC_IP${NC}"
+    
+    # 删除可能存在的配置文件，强制使用脚本中的配置
+    if [ -f "data/config/html_server.json" ]; then
+        echo -e "${YELLOW}删除配置文件 data/config/html_server.json${NC}"
+        rm -f data/config/html_server.json
+    fi
+    
+    # 配置Nginx
+    setup_nginx "$PUBLIC_IP" "$HTML_PORT"
+    
+    # 生成测试HTML文件
+    TEST_URL=$(generate_test_html "$PUBLIC_IP" "$HTML_PORT")
 
     # 测试HTML文件是否可访问
     echo -e "${YELLOW}测试HTML文件是否可访问...${NC}"
-    TEST_URL=$(python -c "
-import sys
-sys.path.append('.')
-from utils.html_server import get_html_url
-import os
-test_path = os.path.abspath('data/charts/test.html')
-if os.path.exists(test_path):
-    url = get_html_url(test_path)
-    print(url)
-else:
-    print('测试文件不存在，正在创建...')
-    from utils.html_server import generate_test_html
-    url = generate_test_html()
-    print(url)
-")
-
-    if [ -n "$TEST_URL" ]; then
-        echo -e "${GREEN}测试HTML文件URL: $TEST_URL${NC}"
-        echo -e "${YELLOW}尝试使用curl访问测试HTML文件...${NC}"
-        curl -s -I "$TEST_URL" | head -n 1
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}测试HTML文件可以成功访问!${NC}"
-        else
-            echo -e "${RED}无法访问测试HTML文件，请检查Nginx配置。${NC}"
-        fi
+    echo -e "${GREEN}测试HTML文件URL: $TEST_URL${NC}"
+    echo -e "${YELLOW}尝试使用curl访问测试HTML文件...${NC}"
+    curl -s -I "$TEST_URL" | head -n 1
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}测试HTML文件可以成功访问!${NC}"
     else
-        echo -e "${RED}无法获取测试HTML文件URL。${NC}"
+        echo -e "${RED}无法访问测试HTML文件，请检查Nginx配置。${NC}"
     fi
+    
+    # 设置环境变量以影响Python中的IP检测
+    export MCP_SERVER_HOST="$PUBLIC_IP"
+    export MCP_ENV="production"
 
     # 根据传输协议选择不同的启动方式
     if [ "$TRANSPORT" == "stdio" ]; then
         echo -e "${GREEN}启动MCP服务器，使用STDIO传输协议${NC}"
         python server.py --transport stdio
     elif [ "$TRANSPORT" == "sse" ]; then
-        echo -e "${GREEN}启动MCP服务器，使用SSE传输协议，地址: http://$HOST:$PORT/sse${NC}"
+        echo -e "${GREEN}启动MCP服务器，使用SSE传输协议，地址: http://$PUBLIC_IP:$PORT/sse${NC}"
         python server.py --transport sse --host "$HOST" --port "$PORT"
     elif [ "$TRANSPORT" == "streamable-http" ]; then
-        echo -e "${GREEN}启动MCP服务器，使用Streamable HTTP传输协议，地址: http://$HOST:$PORT/mcp${NC}"
+        echo -e "${GREEN}启动MCP服务器，使用Streamable HTTP传输协议，地址: http://$PUBLIC_IP:$PORT/mcp${NC}"
         python server.py --transport streamable-http --host "$HOST" --port "$PORT"
     fi
 }
