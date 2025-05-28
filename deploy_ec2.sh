@@ -563,57 +563,6 @@ setup_firewall() {
     echo -e "${YELLOW}请确保AWS安全组允许端口 $PORT 和 $HTML_PORT 的入站流量${NC}"
 }
 
-# 配置AWS安全组
-setup_aws_security_group() {
-    echo -e "${YELLOW}检查AWS安全组配置...${NC}"
-    
-    # 检查是否安装了AWS CLI
-    if ! command -v aws &> /dev/null; then
-        echo -e "${YELLOW}未安装AWS CLI，跳过安全组配置。请手动配置AWS安全组以允许端口 $PORT 和 $HTML_PORT 的入站流量。${NC}"
-        return 0
-    fi
-    
-    # 获取实例ID
-    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    if [ -z "$INSTANCE_ID" ]; then
-        echo -e "${YELLOW}无法获取实例ID，跳过安全组配置。请手动配置AWS安全组。${NC}"
-        return 0
-    fi
-    
-    # 获取安全组ID
-    SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[*].GroupId" --output text)
-    if [ -z "$SECURITY_GROUP_IDS" ]; then
-        echo -e "${YELLOW}无法获取安全组ID，跳过安全组配置。请手动配置AWS安全组。${NC}"
-        return 0
-    fi
-    
-    echo -e "${YELLOW}找到以下安全组: $SECURITY_GROUP_IDS${NC}"
-    
-    # 为每个安全组添加规则
-    for SG_ID in $SECURITY_GROUP_IDS; do
-        echo -e "${YELLOW}配置安全组 $SG_ID...${NC}"
-        
-        # 添加MCP服务端口规则
-        aws ec2 authorize-security-group-ingress \
-            --group-id $SG_ID \
-            --protocol tcp \
-            --port $PORT \
-            --cidr 0.0.0.0/0 \
-            --description "MCP Server" 2>/dev/null || echo -e "${YELLOW}MCP服务端口规则已存在或无法添加${NC}"
-        
-        # 添加HTML服务端口规则
-        aws ec2 authorize-security-group-ingress \
-            --group-id $SG_ID \
-            --protocol tcp \
-            --port $HTML_PORT \
-            --cidr 0.0.0.0/0 \
-            --description "MCP HTML Server" 2>/dev/null || echo -e "${YELLOW}HTML服务端口规则已存在或无法添加${NC}"
-    done
-    
-    echo -e "${GREEN}AWS安全组配置完成!${NC}"
-    return 0
-}
-
 # 运行故障诊断
 run_troubleshooting() {
     echo -e "${YELLOW}运行故障诊断...${NC}"
@@ -653,13 +602,12 @@ run_troubleshooting() {
     
     # 如果仍然无法访问，提供解决方案
     echo -e "${YELLOW}如果仍然无法从外部访问服务，请尝试以下解决方案:${NC}"
-    echo -e "1. 检查AWS安全组配置，确保允许端口 $PORT 和 $HTML_PORT 的入站流量"
-    echo -e "2. 执行以下命令重启服务:"
+    echo -e "1. 执行以下命令重启服务:"
     echo -e "   sudo systemctl restart mcp"
     echo -e "   sudo systemctl restart nginx"
-    echo -e "3. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)"
-    echo -e "4. 如果使用了反向代理，检查配置是否正确"
-    echo -e "5. 尝试修改MCP服务定义:"
+    echo -e "2. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)"
+    echo -e "3. 如果使用了反向代理，检查配置是否正确"
+    echo -e "4. 尝试修改MCP服务定义:"
     echo -e "   sudo nano /etc/systemd/system/mcp.service"
     echo -e "   修改ExecStart行，确保使用0.0.0.0作为主机"
     echo -e "   sudo systemctl daemon-reload"
@@ -720,11 +668,6 @@ main() {
     # 配置防火墙
     setup_firewall || {
         echo -e "${YELLOW}警告: 防火墙配置有问题，但将继续部署${NC}"
-    }
-    
-    # 配置AWS安全组
-    setup_aws_security_group || {
-        echo -e "${YELLOW}警告: AWS安全组配置有问题，请手动配置${NC}"
     }
     
     # 创建systemd服务
