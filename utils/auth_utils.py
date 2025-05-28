@@ -94,11 +94,11 @@ def get_headers() -> Dict[str, str]:
         'Content-Type': 'application/json',
         'Sec-Ch-Ua-Platform': '"macOS"',
         'Sec-Ch-Ua-Mobile': '?0',
-        'Origin': 'https://hitrader.yueniusz.com',
+        'Origin': 'https://api.yueniusz.com',
         'Sec-Fetch-Site': 'same-site',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Dest': 'empty',
-        'Referer': 'https://hitrader.yueniusz.com/',
+        'Referer': 'https://api.yueniusz.com/',
         'Accept-Encoding': 'gzip, deflate, br',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Priority': 'u=1, i'

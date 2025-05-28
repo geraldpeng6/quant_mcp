@@ -21,7 +21,6 @@ def register_all_tools(mcp: FastMCP):
     from src.tools.symbol_tools import register_tools as register_symbol_tools
     from src.tools.strategy_tools import register_tools as register_strategy_tools
     from src.tools.backtest_tools import register_tools as register_backtest_tools
-    from src.tools.hitrader_tools import register_tools as register_hitrader_tools
 
     # 注册K线数据工具
     register_kline_tools(mcp)
@@ -34,6 +33,3 @@ def register_all_tools(mcp: FastMCP):
 
     # 注册回测工具
     register_backtest_tools(mcp)
-
-    # 注册HiTrader工具
-    register_hitrader_tools(mcp)
