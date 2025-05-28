@@ -310,7 +310,44 @@ start_services() {
 
     # 检查Nginx是否正在监听端口
     echo -e "${YELLOW}检查Nginx端口:${NC}"
-    sudo netstat -tulpn | grep nginx
+    
+    # 先尝试使用ss命令（大多数现代Linux发行版都有）
+    if command -v ss &> /dev/null; then
+        echo -e "${YELLOW}使用ss命令检查:${NC}"
+        sudo ss -tulpn | grep nginx
+    # 再尝试使用lsof命令
+    elif command -v lsof &> /dev/null; then
+        echo -e "${YELLOW}使用lsof命令检查:${NC}"
+        sudo lsof -i -P -n | grep nginx
+    # 最后尝试使用netstat命令
+    elif command -v netstat &> /dev/null; then
+        echo -e "${YELLOW}使用netstat命令检查:${NC}"
+        sudo netstat -tulpn | grep nginx
+    # 如果都不可用，尝试安装net-tools
+    else
+        echo -e "${YELLOW}未找到网络检查工具，尝试安装net-tools...${NC}"
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y net-tools
+            if command -v netstat &> /dev/null; then
+                echo -e "${GREEN}net-tools安装成功，使用netstat检查:${NC}"
+                sudo netstat -tulpn | grep nginx
+            else
+                echo -e "${RED}无法安装网络检查工具，跳过端口检查${NC}"
+            fi
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y net-tools
+            if command -v netstat &> /dev/null; then
+                echo -e "${GREEN}net-tools安装成功，使用netstat检查:${NC}"
+                sudo netstat -tulpn | grep nginx
+            else
+                echo -e "${RED}无法安装网络检查工具，跳过端口检查${NC}"
+            fi
+        else
+            echo -e "${RED}未找到包管理器，无法安装网络检查工具，跳过端口检查${NC}"
+            echo -e "${YELLOW}可以使用以下命令手动检查Nginx配置:${NC}"
+            echo -e "${YELLOW}sudo nginx -T | grep listen${NC}"
+        fi
+    fi
 
     # 测试HTML服务器
     echo -e "${YELLOW}测试HTML服务器...${NC}"
