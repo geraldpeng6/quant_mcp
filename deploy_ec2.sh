@@ -170,7 +170,16 @@ print(f'测试HTML文件已生成，URL: {url}')
     sudo usermod -a -G $(whoami) $NGINX_USER
 
     # 确保目录路径上的所有目录都有执行权限
-    sudo chmod 755 /home/$(whoami)
+    # 处理root用户的特殊情况
+    if [ "$NGINX_USER" = "root" ]; then
+        # root用户的主目录通常是/root而不是/home/root
+        sudo chmod 755 /root 2>/dev/null || true
+    else
+        # 非root用户，尝试设置/home/username
+        sudo chmod 755 /home/$NGINX_USER 2>/dev/null || true
+    fi
+
+    # 始终设置当前工作目录的权限
     sudo chmod 755 "$CURRENT_DIR"
     sudo chmod 755 "$CURRENT_DIR/data"
 
@@ -357,38 +366,124 @@ start_services() {
 
     # 确保test.html文件存在并有正确的权限
     if [ -f "$TEST_HTML" ]; then
-        sudo chmod 644 "$TEST_HTML"
         echo -e "${GREEN}测试文件存在: $TEST_HTML${NC}"
-
-        # 尝试访问测试文件
+        
+        # 查看Nginx错误日志以便诊断
+        echo -e "${YELLOW}检查Nginx错误日志:${NC}"
+        sudo tail -n 10 /var/log/nginx/error.log
+        
+        # 诊断Nginx配置
+        echo -e "${YELLOW}检查Nginx配置:${NC}"
+        sudo nginx -T | grep -A 10 "charts/"
+        
+        # 修正文件权限问题
+        echo -e "${YELLOW}设置正确的文件权限...${NC}"
+        
+        # 确保charts目录存在并可访问
+        sudo mkdir -p "$CHARTS_DIR"
+        
+        # 设置目录所有权和权限，确保Nginx可以访问
+        sudo chmod -R 755 "$CURRENT_DIR"
+        sudo chmod -R 755 "$CURRENT_DIR/data"
+        sudo chmod -R 755 "$CHARTS_DIR"
+        sudo chmod 644 "$TEST_HTML"
+        
+        # 如果Nginx作为root运行，这通常不是权限问题，可能是配置问题
+        NGINX_USER=$(ps aux | grep -E 'nginx.*master' | grep -v grep | awk '{print $1}')
+        if [ "$NGINX_USER" = "root" ]; then
+            echo -e "${YELLOW}Nginx作为root运行，修改所有权...${NC}"
+            # 对于root用户，设置文件所有权为root
+            sudo chown -R root:root "$CHARTS_DIR"
+        else
+            echo -e "${YELLOW}Nginx作为$NGINX_USER运行，修改所有权...${NC}"
+            # 对于非root用户，设置文件所有权为Nginx用户
+            sudo chown -R $NGINX_USER:$NGINX_USER "$CHARTS_DIR"
+        fi
+        
+        # 显示文件权限以便诊断
+        echo -e "${YELLOW}文件权限:${NC}"
+        ls -la "$CHARTS_DIR"
+        ls -la "$TEST_HTML"
+        
+        # 重新配置Nginx
+        echo -e "${YELLOW}更新Nginx配置...${NC}"
+        
+        # 创建更简单的Nginx配置，专注于解决403问题
+        sudo bash -c "cat > /etc/nginx/conf.d/mcp_html_server.conf << EOF
+# MCP HTML服务器配置
+server {
+    listen $HTML_PORT;
+    server_name _;
+    
+    # 启用调试日志
+    error_log /var/log/nginx/mcp_error.log debug;
+    
+    # 允许跨域访问
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+    
+    # 静态文件服务 - 使用绝对路径
+    location /charts/ {
+        alias $CHARTS_DIR/;
+        autoindex off;
+        
+        # 允许访问所有文件类型
+        types { text/html html htm; }
+        default_type text/html;
+        
+        # 调试信息
+        add_header X-Debug-Path \$request_filename;
+        add_header X-Alias-Path $CHARTS_DIR/;
+        
+        # 禁用访问限制
+        allow all;
+    }
+    
+    # 默认页面
+    location = / {
+        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p></body></html>';
+        add_header Content-Type text/html;
+    }
+}
+EOF"
+        
+        # 测试Nginx配置
+        sudo nginx -t
+        
+        # 重启Nginx
+        sudo systemctl restart nginx
+        
+        # 确保防火墙允许HTML服务器端口
+        if command -v ufw &> /dev/null; then
+            sudo ufw allow $HTML_PORT/tcp
+        fi
+        
+        # 等待Nginx重启
+        sleep 3
+        
+        # 再次尝试访问
+        echo -e "${YELLOW}再次测试HTML文件访问...${NC}"
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$HTML_PORT/charts/test.html)
         if [ "$HTTP_CODE" == "200" ]; then
             echo -e "${GREEN}测试HTML文件可以成功访问!${NC}"
         else
-            echo -e "${YELLOW}测试HTML文件返回状态码: $HTTP_CODE${NC}"
-
-            # 如果访问失败，尝试修复权限
-            echo -e "${YELLOW}尝试修复权限...${NC}"
-            sudo chmod -R 755 "$CHARTS_DIR"
-            sudo chmod 644 "$TEST_HTML"
-
-            # 将charts目录的所有权更改为Nginx用户
-            NGINX_USER=$(ps aux | grep -E 'nginx.*master' | grep -v grep | awk '{print $1}')
-            if [ -z "$NGINX_USER" ]; then
-                NGINX_USER="www-data"  # 默认Nginx用户
-            fi
-            sudo chown -R $NGINX_USER:$NGINX_USER "$CHARTS_DIR"
-
-            # 重启Nginx
-            sudo systemctl restart nginx
-
-            # 再次尝试访问
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$HTML_PORT/charts/test.html)
+            echo -e "${RED}测试HTML文件仍然无法访问，状态码: $HTTP_CODE${NC}"
+            echo -e "${YELLOW}查看详细错误日志:${NC}"
+            sudo tail -n 20 /var/log/nginx/mcp_error.log
+            sudo tail -n 20 /var/log/nginx/error.log
+            
+            # 创建测试用的简单HTML文件
+            echo -e "${YELLOW}创建简单测试文件...${NC}"
+            echo "<html><body><h1>测试页面</h1><p>这是一个测试页面</p></body></html>" | sudo tee "$CHARTS_DIR/simple_test.html" > /dev/null
+            sudo chmod 644 "$CHARTS_DIR/simple_test.html"
+            
+            # 再次尝试访问简单测试文件
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$HTML_PORT/charts/simple_test.html)
             if [ "$HTTP_CODE" == "200" ]; then
-                echo -e "${GREEN}修复后测试HTML文件可以成功访问!${NC}"
+                echo -e "${GREEN}简单测试HTML文件可以成功访问!${NC}"
             else
-                echo -e "${RED}修复后测试HTML文件仍然无法访问，状态码: $HTTP_CODE${NC}"
-                echo -e "${YELLOW}请检查Nginx错误日志: sudo tail -f /var/log/nginx/error.log${NC}"
+                echo -e "${RED}简单测试HTML文件仍然无法访问，状态码: $HTTP_CODE${NC}"
             fi
         fi
     else
