@@ -21,6 +21,24 @@ USER_ID = None
 AUTO_APPROVE_TOOLS = []
 
 
+def load_auth_config() -> bool:
+    """
+    加载认证配置（兼容性函数）
+    
+    新版本不再从本地文件加载认证信息，而是通过MCP客户端传入
+    该函数保留为了兼容现有代码结构
+    
+    Returns:
+        bool: 始终返回True表示认证配置已加载
+    """
+    token, user_id = get_auth_info()
+    if token and user_id:
+        logger.debug("已加载认证配置")
+    else:
+        logger.warning("未设置认证信息，可能会导致API请求失败")
+    return True
+
+
 def set_auth_from_mcp(token: Optional[str] = None, user_id: Optional[str] = None) -> None:
     """
     从MCP客户端设置认证信息
