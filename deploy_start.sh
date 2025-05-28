@@ -385,13 +385,22 @@ server {
     location /charts/ {
         alias $CHARTS_DIR/;
 
-        # 允许所有文件类型以方便调试
-        add_header Content-Type text/html;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        # 设置正确的MIME类型
+        types {
+            text/html html htm;
+            text/css css;
+            application/javascript js;
+            image/png png;
+            image/jpeg jpg jpeg;
+            image/gif gif;
+            image/svg+xml svg svgz;
+        }
+        
         # 允许跨域访问
         add_header 'Access-Control-Allow-Origin' '*';
         add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
         add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
 
         # 禁止目录列表
         autoindex off;
@@ -401,9 +410,6 @@ server {
         client_max_body_size 10m;
         # 确保nginx有足够权限
         dav_access user:rw group:rw all:r;
-        
-        # 关键修复：确保此处文件可以被访问
-        allow all;
     }
 
     # MCP服务器代理 - 代理SSE请求到MCP服务器
@@ -438,12 +444,33 @@ EOF
         sudo cp "$TEMP_CONF_FILE" "$NGINX_CONF_DIR/mcp_html_server.conf"
         rm "$TEMP_CONF_FILE"
         
+        # 确保charts目录存在并具有正确的权限
+        mkdir -p data/charts
+        # 递归设置目录权限
+        sudo chmod -R 755 data/charts
+        # 递归设置文件权限
+        find data/charts -type f -exec sudo chmod 644 {} \;
+        # 设置目录所有者为nginx或www-data
+        if getent passwd www-data >/dev/null 2>&1; then
+            sudo chown -R www-data:www-data data/charts || true
+        elif getent passwd nginx >/dev/null 2>&1; then
+            sudo chown -R nginx:nginx data/charts || true
+        fi
+        # 确保目录路径也可访问
+        sudo chmod 755 $(pwd)
+        sudo chmod 755 $(pwd)/data
+        
         # 测试配置
         echo -e "${YELLOW}测试Nginx配置...${NC}"
         if sudo nginx -t; then
             # 重新加载Nginx
             echo -e "${YELLOW}启动Nginx服务...${NC}"
             sudo systemctl start nginx || sudo service nginx start
+            # 确保Nginx已经启动
+            if ! systemctl is-active --quiet nginx; then
+                echo -e "${YELLOW}尝试以其他方式启动Nginx...${NC}"
+                sudo nginx || true
+            fi
             echo -e "${GREEN}Nginx配置已更新并启动${NC}"
         else
             echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
@@ -457,10 +484,15 @@ EOF
         
         create_nginx_config "$NGINX_CONF_DIR/mcp_html_server.conf"
         
+        # 确保charts目录存在并具有正确的权限
+        mkdir -p data/charts
+        chmod -R 755 data/charts
+        find data/charts -type f -exec chmod 644 {} \;
+        
         # 测试配置
         if nginx -t; then
             # 启动Nginx
-            brew services start nginx
+            brew services restart nginx
             echo -e "${GREEN}Nginx配置已更新并启动${NC}"
         else
             echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
@@ -537,23 +569,119 @@ EOF"
 generate_test_html() {
     echo -e "${YELLOW}生成测试HTML文件...${NC}"
     
-    # 确保必要的目录存在
-    mkdir -p data/logs data/klines data/charts data/temp data/config data/backtest data/templates
+    # 确保charts目录存在
+    mkdir -p data/charts
     
-    # 直接创建测试HTML文件，避免依赖Python函数
+    # 创建测试HTML文件
     TEST_HTML_PATH="data/charts/test.html"
+    
     cat > "$TEST_HTML_PATH" << EOF
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MCP测试页面</title>
+    <title>MCP HTML服务器测试</title>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .info { color: blue; }
+        .server-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 20px; }
+    </style>
 </head>
 <body>
-    <h1>MCP测试页面</h1>
-    <p>这是一个测试页面，如果您能看到此内容，说明HTML服务器配置正确。</p>
-    <p>当前时间: <span id="time"></span></p>
-    <script>document.getElementById("time").textContent = new Date().toLocaleString();</script>
+    <div class="container">
+        <h1>MCP HTML服务器测试</h1>
+        <p class="success">如果您看到此页面，说明HTML服务器配置成功。</p>
+
+        <div class="server-info">
+            <h2>服务器信息</h2>
+            <p><strong>HTML端口:</strong> $HTML_PORT</p>
+            <p><strong>生成时间:</strong> <span id="time"></span></p>
+            <p><a href="index.html">查看索引页面</a></p>
+        </div>
+
+        <script>
+            document.getElementById('time').textContent = new Date().toLocaleString();
+        </script>
+    </div>
+</body>
+</html>
+EOF
+
+    # 创建索引HTML文件，帮助测试多个HTML文件
+    INDEX_HTML_PATH="data/charts/index.html"
+    
+    cat > "$INDEX_HTML_PATH" << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP Charts索引</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        h1 { color: #333; }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 10px; }
+        .timestamp { color: #888; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MCP Charts索引</h1>
+        <p>此页面列出了charts目录中的可用HTML文件。</p>
+        
+        <ul>
+            <li><a href="test.html">测试页面</a> - 基本测试HTML</li>
+            <li><a href="demo.html">演示图表</a> - 图表演示页面</li>
+        </ul>
+        
+        <p class="timestamp">页面生成时间: <span id="time"></span></p>
+        
+        <script>
+            document.getElementById('time').textContent = new Date().toLocaleString();
+        </script>
+    </div>
+</body>
+</html>
+EOF
+
+    # 创建演示图表HTML文件
+    DEMO_HTML_PATH="data/charts/demo.html"
+    
+    cat > "$DEMO_HTML_PATH" << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP 图表演示</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .chart { width: 100%; height: 300px; background-color: #f5f5f5; border: 1px solid #ddd; margin-top: 20px; display: flex; justify-content: center; align-items: center; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MCP 图表演示</h1>
+        <p>这是一个简单的图表演示页面。如果您能看到此内容，说明charts目录下的HTML文件可以正确访问。</p>
+        
+        <div class="chart">
+            <div>图表演示区域</div>
+        </div>
+        
+        <p>生成时间: <span id="time"></span></p>
+        <p><a href="index.html">返回索引页面</a></p>
+        
+        <script>
+            document.getElementById('time').textContent = new Date().toLocaleString();
+        </script>
+    </div>
 </body>
 </html>
 EOF
@@ -573,10 +701,6 @@ EOF
         # 确保nginx用户可以访问整个路径
         sudo chmod 755 $(pwd)
         sudo chmod 755 $(pwd)/data
-        
-        # 确保nginx用户可以访问charts目录
-        sudo chmod -R 755 data/charts
-        sudo chmod a+r data/charts/*
     fi
     
     # 尝试获取服务器主机地址
@@ -600,6 +724,132 @@ except Exception as e:
         echo -e "${GREEN}测试HTML文件可以成功访问!${NC}"
     else
         echo -e "${YELLOW}无法通过HTTP访问测试HTML文件，可能需要配置Nginx${NC}"
+    fi
+    
+    return 0
+}
+
+# 添加HTML文件访问诊断和修复函数
+diagnose_html_access() {
+    echo -e "${YELLOW}诊断和修复HTML文件访问问题...${NC}"
+    
+    # 确保charts目录存在
+    mkdir -p data/charts
+    
+    # 测试URL构建
+    SERVER_HOST=$(python -c "
+import sys
+sys.path.append('.')
+try:
+    from utils.html_server import get_server_host
+    host = get_server_host()
+    print(host)
+except Exception as e:
+    print('localhost')
+")
+    
+    TEST_URL="http://${SERVER_HOST}:${HTML_PORT}/charts/test.html"
+    
+    # 测试访问
+    echo -e "${YELLOW}尝试访问测试HTML文件: $TEST_URL${NC}"
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TEST_URL")
+    
+    if [ "$HTTP_STATUS" = "200" ]; then
+        echo -e "${GREEN}HTML文件访问正常 (HTTP 200)!${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}HTML文件访问问题 (HTTP $HTTP_STATUS), 尝试修复...${NC}"
+    
+    # 问题1: 检查Nginx配置
+    echo -e "${YELLOW}检查Nginx配置...${NC}"
+    if [ "$MACHINE" = "Linux" ]; then
+        CONFIG_FILE="/etc/nginx/conf.d/mcp_html_server.conf"
+        if [ -f "$CONFIG_FILE" ]; then
+            echo -e "${GREEN}Nginx配置文件存在: $CONFIG_FILE${NC}"
+            
+            # 检查配置
+            if grep -q "location /charts/" "$CONFIG_FILE"; then
+                echo -e "${GREEN}Nginx配置中包含/charts/路径${NC}"
+            else
+                echo -e "${RED}Nginx配置中缺少/charts/路径，重新配置Nginx${NC}"
+                setup_nginx_improved
+            fi
+        else
+            echo -e "${RED}未找到Nginx配置文件，重新配置Nginx${NC}"
+            setup_nginx_improved
+        fi
+        
+        # 检查Nginx是否运行
+        if systemctl is-active --quiet nginx; then
+            echo -e "${GREEN}Nginx正在运行${NC}"
+        else
+            echo -e "${RED}Nginx未运行，尝试启动${NC}"
+            sudo systemctl start nginx || sudo service nginx start || sudo nginx
+        fi
+    elif [ "$MACHINE" = "Mac" ]; then
+        CONFIG_FILE="/opt/homebrew/etc/nginx/servers/mcp_html_server.conf"
+        if [ -f "$CONFIG_FILE" ]; then
+            echo -e "${GREEN}Nginx配置文件存在: $CONFIG_FILE${NC}"
+            
+            # 检查配置
+            if grep -q "location /charts/" "$CONFIG_FILE"; then
+                echo -e "${GREEN}Nginx配置中包含/charts/路径${NC}"
+            else
+                echo -e "${RED}Nginx配置中缺少/charts/路径，重新配置Nginx${NC}"
+                setup_nginx_improved
+            fi
+        else
+            echo -e "${RED}未找到Nginx配置文件，重新配置Nginx${NC}"
+            setup_nginx_improved
+        fi
+        
+        # 检查Nginx是否运行
+        if pgrep -x "nginx" > /dev/null; then
+            echo -e "${GREEN}Nginx正在运行${NC}"
+        else
+            echo -e "${RED}Nginx未运行，尝试启动${NC}"
+            brew services start nginx || nginx
+        fi
+    fi
+    
+    # 问题2: 检查文件权限
+    echo -e "${YELLOW}检查文件权限...${NC}"
+    if [ "$MACHINE" = "Linux" ]; then
+        sudo chmod -R 755 data/charts
+        find data/charts -type f -exec sudo chmod 644 {} \;
+        sudo chmod 755 $(pwd)
+        sudo chmod 755 $(pwd)/data
+        
+        # 检查并修复所有者
+        if getent passwd www-data >/dev/null 2>&1; then
+            sudo chown -R www-data:www-data data/charts
+            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
+        elif getent passwd nginx >/dev/null 2>&1; then
+            sudo chown -R nginx:nginx data/charts
+            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
+        fi
+    elif [ "$MACHINE" = "Mac" ]; then
+        chmod -R 755 data/charts
+        find data/charts -type f -exec chmod 644 {} \;
+    fi
+    
+    # 问题3: 重新生成测试文件
+    echo -e "${YELLOW}重新生成测试文件...${NC}"
+    generate_test_html
+    
+    # 重新测试访问
+    echo -e "${YELLOW}再次尝试访问测试HTML文件...${NC}"
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TEST_URL")
+    
+    if [ "$HTTP_STATUS" = "200" ]; then
+        echo -e "${GREEN}修复成功! HTML文件现在可以访问 (HTTP 200)${NC}"
+    else
+        echo -e "${RED}修复后仍然无法访问HTML文件 (HTTP $HTTP_STATUS)${NC}"
+        echo -e "${YELLOW}请尝试手动检查以下方面:${NC}"
+        echo -e "1. Nginx日志: /var/log/nginx/error.log"
+        echo -e "2. 确认防火墙允许端口$HTML_PORT"
+        echo -e "3. 确认charts目录路径正确: $CHARTS_DIR"
     fi
     
     return 0
@@ -675,6 +925,9 @@ redeploy() {
     # 配置HTML服务器
     setup_html_server
     
+    # 生成测试HTML文件
+    generate_test_html
+    
     # 配置Nginx - 使用改进版函数
     setup_nginx_improved
     
@@ -682,6 +935,34 @@ redeploy() {
     if [ "$HOST" != "0.0.0.0" ]; then
         echo -e "${YELLOW}在重新部署模式下将服务器绑定地址设为0.0.0.0${NC}"
         HOST="0.0.0.0"
+    fi
+    
+    # 添加专门针对HTML文件访问的修复
+    echo -e "${YELLOW}应用HTML文件访问问题修复...${NC}"
+    
+    # 确保charts目录存在并有正确权限
+    mkdir -p data/charts
+    
+    # 在Linux系统上设置正确的文件权限
+    if [ "$MACHINE" = "Linux" ]; then
+        # 递归设置目录权限
+        sudo chmod -R 755 data/charts
+        # 递归设置文件权限
+        find data/charts -type f -exec sudo chmod 644 {} \;
+        # 设置目录所有者为nginx或www-data
+        if getent passwd www-data >/dev/null 2>&1; then
+            sudo chown -R www-data:www-data data/charts
+            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
+        elif getent passwd nginx >/dev/null 2>&1; then
+            sudo chown -R nginx:nginx data/charts
+            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
+        fi
+        # 确保目录路径也可访问
+        sudo chmod 755 $(pwd)
+        sudo chmod 755 $(pwd)/data
+    elif [ "$MACHINE" = "Mac" ]; then
+        chmod -R 755 data/charts
+        find data/charts -type f -exec chmod 644 {} \;
     fi
     
     if [ "$MACHINE" = "Linux" ]; then
@@ -694,6 +975,18 @@ redeploy() {
     
     echo -e "${GREEN}重新部署完成！${NC}"
     show_service_info
+    
+    # 增加关于HTML服务器的特定说明
+    echo -e "\n${YELLOW}HTML服务器访问说明:${NC}"
+    echo -e "1. 测试HTML页面应该可以通过以下URL访问:"
+    echo -e "   http://服务器IP:$HTML_PORT/charts/test.html"
+    echo -e "2. 如果无法访问，可尝试以下操作:"
+    echo -e "   - 检查防火墙是否允许端口$HTML_PORT"
+    echo -e "   - 重启Nginx: sudo systemctl restart nginx"
+    echo -e "   - 检查日志: sudo tail -f /var/log/nginx/error.log"
+    echo -e "   - 运行诊断: $0 --redeploy (将自动运行诊断流程)"
+    echo -e "3. charts目录位于: $(pwd)/data/charts"
+    echo -e "   将HTML文件放入此目录即可通过 http://服务器IP:$HTML_PORT/charts/文件名.html 访问"
 }
 
 # 添加端口检查函数，在脚本结尾调用
@@ -725,6 +1018,8 @@ check_ports() {
 main() {
     if [ "$REDEPLOY" = true ]; then
         redeploy
+        # 重新部署后进行HTML访问诊断
+        diagnose_html_access
         return 0
     fi
     
@@ -771,6 +1066,12 @@ main() {
     
     # 生成测试HTML文件
     generate_test_html
+    
+    # 改进版Nginx配置
+    setup_nginx_improved
+    
+    # 诊断和修复HTML文件访问问题
+    diagnose_html_access
     
     # 启动服务
     start_mcp
