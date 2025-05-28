@@ -114,7 +114,7 @@ setup_html_server() {
     echo -e "${YELLOW}配置HTML服务器...${NC}"
     
     # 创建配置目录
-    mkdir -p data/config
+    mkdir -p data/config data/charts
     
     # 创建HTML服务器配置文件
     if [ ! -f "data/config/html_server.json" ]; then
@@ -128,19 +128,73 @@ setup_html_server() {
 EOF
         echo -e "${GREEN}HTML服务器配置文件已创建!${NC}"
     else
-        echo -e "${YELLOW}HTML服务器配置文件已存在，跳过创建${NC}"
+        echo -e "${YELLOW}HTML服务器配置文件已存在，尝试更新配置...${NC}"
+        # 使用临时文件进行替换，确保不会损坏原始文件
+        cat > data/config/html_server.json.new << EOF
+{
+    "server_port": $HTML_PORT,
+    "charts_dir": "data/charts",
+    "use_ec2_metadata": true,
+    "use_public_ip": true
+}
+EOF
+        mv data/config/html_server.json.new data/config/html_server.json
+        echo -e "${GREEN}HTML服务器配置文件已更新!${NC}"
     fi
     
     # 设置环境变量
     export MCP_ENV="production"
     
     # 生成测试HTML文件
+    echo -e "${YELLOW}生成测试HTML文件...${NC}"
+    
+    # 直接创建测试HTML文件，不依赖Python脚本
+    cat > data/charts/test.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP HTML服务器测试</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .info { color: blue; }
+        .server-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MCP HTML服务器测试</h1>
+        <p class="success">如果您看到此页面，说明HTML服务器配置成功。</p>
+
+        <div class="server-info">
+            <h2>服务器信息</h2>
+            <p><strong>主机地址:</strong> <span id="server-ip">$PUBLIC_IP</span></p>
+            <p><strong>端口:</strong> <span id="server-port">$HTML_PORT</span></p>
+            <p><strong>生成时间:</strong> <span id="time"></span></p>
+        </div>
+
+        <script>
+            document.getElementById('time').textContent = new Date().toLocaleString();
+        </script>
+    </div>
+</body>
+</html>
+EOF
+    
+    # 尝试使用Python脚本生成更高级的测试HTML文件
     python -c "
 import sys
 sys.path.append('.')
-from utils.html_server import generate_test_html
-url = generate_test_html()
-print(f'测试HTML文件已生成，URL: {url}')
+try:
+    from utils.html_server import generate_test_html
+    url = generate_test_html()
+    print(f'高级测试HTML文件已生成，URL: {url}')
+except Exception as e:
+    print(f'警告: 无法使用Python脚本生成高级测试HTML文件: {e}')
+    print('已使用基本HTML文件作为备用')
 "
     
     echo -e "${GREEN}HTML服务器配置完成!${NC}"
@@ -149,6 +203,15 @@ print(f'测试HTML文件已生成，URL: {url}')
 # 配置Nginx
 setup_nginx() {
     echo -e "${YELLOW}配置Nginx...${NC}"
+    
+    # 检查Nginx是否已安装
+    if ! command -v nginx &> /dev/null; then
+        echo -e "${YELLOW}警告: Nginx未安装，尝试安装Nginx...${NC}"
+        sudo apt-get install -y nginx || {
+            echo -e "${RED}错误: 无法安装Nginx，跳过Nginx配置${NC}"
+            return 1
+        }
+    fi
     
     # 设置环境变量
     export MCP_ENV="production"
@@ -160,9 +223,107 @@ sys.path.append('.')
 from utils.html_server import setup_nginx
 success, message = setup_nginx()
 print(message)
-"
+" || {
+        echo -e "${RED}错误: Nginx配置失败，尝试手动配置${NC}"
+        
+        # 获取当前目录和charts目录
+        CURRENT_DIR=$(pwd)
+        CHARTS_DIR="$CURRENT_DIR/data/charts"
+        
+        # 确保目录存在
+        mkdir -p $CHARTS_DIR
+        
+        # 创建备用Nginx配置
+        cat > nginx_conf_template.txt << EOF
+server {
+    listen $HTML_PORT;
+    server_name _;
+
+    # 允许跨域访问
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+
+    # 静态文件服务
+    location /charts/ {
+        alias $CHARTS_DIR/;
+        autoindex off;
+    }
+
+    # 默认页面
+    location = / {
+        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p></body></html>';
+        add_header Content-Type text/html;
+    }
+}
+EOF
+        
+        # 复制配置文件到Nginx目录
+        sudo cp nginx_conf_template.txt /etc/nginx/conf.d/mcp_html_server.conf
+        
+        # 测试Nginx配置
+        sudo nginx -t && {
+            echo -e "${GREEN}Nginx手动配置成功!${NC}"
+            sudo systemctl reload nginx
+        } || {
+            echo -e "${RED}Nginx手动配置失败，跳过Nginx配置${NC}"
+            return 1
+        }
+    }
     
     echo -e "${GREEN}Nginx配置完成!${NC}"
+    return 0
+}
+
+# 检查端口是否已被占用
+check_port() {
+    local port=$1
+    local force_kill=${2:-false}
+    local pid
+
+    echo -e "${YELLOW}检查端口 $port 是否可用...${NC}"
+    
+    # 使用ss命令或lsof查找占用端口的进程
+    if command -v ss &> /dev/null; then
+        pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+    elif command -v lsof &> /dev/null; then
+        pid=$(lsof -ti:$port)
+    else
+        echo -e "${YELLOW}警告: 无法检查端口占用，未找到ss或lsof命令${NC}"
+        return
+    fi
+    
+    if [ -n "$pid" ]; then
+        echo -e "${RED}错误: 端口 $port 已被进程 $pid 占用${NC}"
+        echo -e "${YELLOW}尝试终止占用进程...${NC}"
+        
+        # 尝试正常终止
+        kill $pid 2>/dev/null
+        sleep 2
+        
+        # 检查进程是否仍在运行
+        if ps -p $pid > /dev/null; then
+            echo -e "${YELLOW}进程未响应正常终止信号，尝试强制终止...${NC}"
+            kill -9 $pid 2>/dev/null
+            sleep 1
+        fi
+        
+        # 再次检查端口
+        if command -v ss &> /dev/null; then
+            pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+        elif command -v lsof &> /dev/null; then
+            pid=$(lsof -ti:$port)
+        fi
+        
+        if [ -n "$pid" ]; then
+            echo -e "${RED}错误: 无法释放端口 $port，仍被进程 $pid 占用${NC}"
+            exit 1
+        else
+            echo -e "${GREEN}成功释放端口 $port${NC}"
+        fi
+    else
+        echo -e "${GREEN}端口 $port 可用${NC}"
+    fi
 }
 
 # 创建systemd服务
@@ -182,8 +343,8 @@ After=network.target
 Type=simple
 User=$(whoami)
 WorkingDirectory=$CURRENT_DIR
-Environment=MCP_ENV=production
-Environment=MCP_SERVER_HOST=
+Environment=\"MCP_ENV=production\"
+Environment=\"MCP_SERVER_HOST=$PUBLIC_IP\"
 ExecStart=$CURRENT_DIR/.venv/bin/python server.py --transport $TRANSPORT --host $HOST --port $PORT
 Restart=on-failure
 RestartSec=5s
@@ -206,10 +367,16 @@ start_services() {
     echo -e "${YELLOW}启动服务...${NC}"
     
     # 启动Nginx
-    sudo systemctl restart nginx
+    sudo systemctl restart nginx || {
+        echo -e "${RED}错误: 无法启动Nginx服务${NC}"
+        return 1
+    }
     
     # 启动MCP服务
-    sudo systemctl start mcp.service
+    sudo systemctl start mcp.service || {
+        echo -e "${RED}错误: 无法启动MCP服务${NC}"
+        return 1
+    }
     
     # 检查服务状态
     echo -e "${YELLOW}Nginx状态:${NC}"
@@ -219,6 +386,7 @@ start_services() {
     sudo systemctl status mcp.service --no-pager
     
     echo -e "${GREEN}服务已启动!${NC}"
+    return 0
 }
 
 # 显示服务信息
@@ -318,6 +486,8 @@ show_service_info() {
         echo -e "${GREEN}MCP服务器SSE端点: http://$PUBLIC_IP:$PORT/sse${NC}"
     elif [ "$TRANSPORT" == "streamable-http" ]; then
         echo -e "${GREEN}MCP服务器HTTP端点: http://$PUBLIC_IP:$PORT/mcp${NC}"
+    elif [ "$TRANSPORT" == "stdio" ]; then
+        echo -e "${GREEN}MCP服务器使用STDIO传输协议，无网络端点${NC}"
     fi
     echo -e "${GREEN}HTML服务器地址: http://$PUBLIC_IP:$HTML_PORT${NC}"
     echo -e "${GREEN}测试HTML页面: http://$PUBLIC_IP:$HTML_PORT/charts/test.html${NC}"
@@ -328,25 +498,74 @@ main() {
     echo -e "${YELLOW}开始在EC2实例上部署MCP服务器...${NC}"
     
     # 安装系统依赖
-    install_system_deps
+    install_system_deps || {
+        echo -e "${RED}错误: 系统依赖安装失败，终止部署${NC}"
+        exit 1
+    }
     
     # 设置虚拟环境
-    setup_venv
+    setup_venv || {
+        echo -e "${RED}错误: 虚拟环境设置失败，终止部署${NC}"
+        exit 1
+    }
+    
+    # 获取公网IP - 在调用其他函数前获取，确保所有函数都能使用
+    PUBLIC_IP=$(get_public_ip)
+    if [ "$PUBLIC_IP" == "localhost" ]; then
+        echo -e "${YELLOW}警告: 无法获取公网IP，将使用localhost进行部署${NC}"
+        # 使用localhost继续，但这可能导致一些功能无法正常工作
+    else
+        echo -e "${GREEN}成功获取IP: $PUBLIC_IP${NC}"
+    fi
+    
+    # 导出IP到环境变量，以便Python脚本使用
+    export MCP_SERVER_HOST="$PUBLIC_IP"
+    export MCP_ENV="production"
     
     # 配置HTML服务器
-    setup_html_server
+    setup_html_server || {
+        echo -e "${YELLOW}警告: HTML服务器配置有问题，但将继续部署${NC}"
+    }
     
     # 配置Nginx
-    setup_nginx
+    setup_nginx || {
+        echo -e "${YELLOW}警告: Nginx配置有问题，但将继续部署${NC}"
+    }
+    
+    # 检查端口是否可用
+    check_port $PORT true || {
+        echo -e "${RED}错误: 无法使用端口 $PORT，终止部署${NC}"
+        exit 1
+    }
+    
+    check_port $HTML_PORT true || {
+        echo -e "${YELLOW}警告: 无法使用HTML端口 $HTML_PORT，HTML服务可能无法正常工作${NC}"
+    }
     
     # 创建systemd服务
-    create_systemd_service
+    create_systemd_service || {
+        echo -e "${RED}错误: systemd服务创建失败，终止部署${NC}"
+        exit 1
+    }
     
     # 启动服务
-    start_services
+    start_services || {
+        echo -e "${RED}错误: 服务启动失败，终止部署${NC}"
+        exit 1
+    }
     
     # 显示服务信息
     show_service_info
+    
+    # 验证服务是否正常运行
+    echo -e "${YELLOW}验证服务是否正常运行...${NC}"
+    if curl -s "http://$PUBLIC_IP:$PORT/ping" | grep -q "pong"; then
+        echo -e "${GREEN}MCP服务器正常运行!${NC}"
+    else
+        echo -e "${YELLOW}警告: 无法验证MCP服务器是否正常运行${NC}"
+    fi
+    
+    echo -e "${GREEN}部署过程完成!${NC}"
 }
 
 # 执行主函数
