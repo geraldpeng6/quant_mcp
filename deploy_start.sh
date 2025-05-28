@@ -782,28 +782,60 @@ except Exception as e:
     return 0
 }
 
-# 启动服务
-start_mcp() {
-    echo -e "${GREEN}启动MCP服务器，使用${TRANSPORT}传输协议${NC}"
+# 检查配置文件
+check_config_files() {
+    echo -e "${YELLOW}检查MCP客户端配置...${NC}"
     
-    # 在Linux部署模式下，服务已经通过systemd启动
-    if [ "$MACHINE" = "Linux" ] && [ "$DEPLOY_MODE" = "deploy" ]; then
-        echo -e "${GREEN}MCP服务器已通过systemd启动${NC}"
-        return 0
-    fi
-    
-    # 根据传输协议选择不同的启动方式
-    if [ "$TRANSPORT" = "stdio" ]; then
-        python server.py --transport stdio
-    elif [ "$TRANSPORT" = "sse" ]; then
-        echo -e "${GREEN}启动MCP服务器，使用SSE传输协议，地址: http://$HOST:$PORT/sse${NC}"
-        python server.py --transport sse --host "$HOST" --port "$PORT"
-    elif [ "$TRANSPORT" = "streamable-http" ]; then
-        echo -e "${GREEN}启动MCP服务器，使用Streamable HTTP传输协议，地址: http://$HOST:$PORT/mcp${NC}"
-        python server.py --transport streamable-http --host "$HOST" --port "$PORT"
-    fi
+    echo -e "${YELLOW}注意: 本服务器直接从MCP客户端配置中获取认证信息${NC}"
+    echo -e "${YELLOW}请确保您的MCP客户端配置中包含以下节点:${NC}"
+    echo -e "${GREEN}  {${NC}"
+    echo -e "${GREEN}    \"quant_sse\": {${NC}"
+    echo -e "${GREEN}      \"token\": \"您的认证令牌\",${NC}"
+    echo -e "${GREEN}      \"user_id\": \"您的用户ID\",${NC}"
+    echo -e "${GREEN}      \"auto_approve_tools\": [\"工具名称1\", \"工具名称2\"]${NC}"
+    echo -e "${GREEN}    }${NC}"
+    echo -e "${GREEN}  }${NC}"
     
     return 0
+}
+
+# 启动服务器
+start_server() {
+    echo -e "${YELLOW}启动MCP服务器...${NC}"
+    
+    # 检查配置文件
+    check_config_files
+    
+    # 创建启动命令
+    CMD="python server.py --transport $TRANSPORT"
+    
+    if [ "$TRANSPORT" != "stdio" ]; then
+        CMD="$CMD --host $HOST --port $PORT"
+    fi
+    
+    # 打印启动信息
+    echo -e "${GREEN}启动命令: $CMD${NC}"
+    
+    # 如果是stdio模式，直接执行
+    if [ "$TRANSPORT" = "stdio" ]; then
+        echo -e "${GREEN}启动MCP服务器 (stdio)...${NC}"
+        eval "$CMD"
+    else
+        # 检查是否有虚拟环境
+        if [ -d ".venv" ]; then
+            # 激活虚拟环境并启动
+            echo -e "${GREEN}使用虚拟环境启动MCP服务器...${NC}"
+            if [ "$MACHINE" = "Windows" ]; then
+                . .venv/Scripts/activate && eval "$CMD"
+            else
+                . .venv/bin/activate && eval "$CMD"
+            fi
+        else
+            # 直接启动
+            echo -e "${GREEN}启动MCP服务器...${NC}"
+            eval "$CMD"
+        fi
+    fi
 }
 
 # 显示服务信息
@@ -883,7 +915,7 @@ redeploy() {
         create_systemd_service
     else
         # 直接启动
-        start_mcp
+        start_server
     fi
     
     echo -e "${GREEN}重新部署完成！${NC}"
@@ -982,7 +1014,7 @@ main() {
     diagnose_html_access
     
     # 启动服务
-    start_mcp
+    start_server
     
     # 显示服务信息
     show_service_info

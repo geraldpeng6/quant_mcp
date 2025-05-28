@@ -10,16 +10,52 @@ import sys
 import logging
 import os
 import inspect
+from typing import Dict, Any, Optional, List
 from mcp.server.fastmcp import FastMCP
+from mcp.server.middleware import Middleware
 
 from utils.logging_utils import setup_logging
 from utils.html_server import generate_test_html, is_nginx_available
+from utils.auth_utils import set_auth_from_mcp, set_auto_approve_tools
 from src.tools import register_all_tools
 from src.resources import register_all_resources
 from src.prompts import register_all_prompts
 
 # 设置日志
 logger = setup_logging('quant_mcp.server')
+
+class AuthMiddleware(Middleware):
+    """认证中间件，从MCP客户端配置中提取认证信息"""
+    
+    def __init__(self):
+        self.config_section = "quant_sse"
+        logger.info(f"初始化认证中间件，配置节点: {self.config_section}")
+    
+    def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """处理请求，提取认证信息"""
+        # 从client_info中获取MCP客户端配置
+        client_info = request.get("client_info", {})
+        mcp_config = client_info.get("mcp_config", {})
+        
+        # 从quant_sse配置节点获取认证信息
+        config = mcp_config.get(self.config_section, {})
+        token = config.get("token")
+        user_id = config.get("user_id")
+        auto_approve_tools = config.get("auto_approve_tools", [])
+        
+        if token and user_id:
+            logger.info(f"从MCP客户端配置中获取到认证信息，用户ID: {user_id[:4]}***")
+            # 设置认证信息
+            set_auth_from_mcp(token, user_id)
+            
+            # 设置自动批准工具列表
+            if auto_approve_tools:
+                logger.info(f"从MCP客户端配置中获取到自动批准工具列表: {auto_approve_tools}")
+                set_auto_approve_tools(auto_approve_tools)
+        else:
+            logger.warning("从MCP客户端配置中未获取到完整认证信息")
+        
+        return request
 
 def create_server(name: str = "量化交易助手") -> FastMCP:
     """
@@ -33,6 +69,9 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
     """
     # 创建FastMCP服务器实例
     mcp = FastMCP(name, host="0.0.0.0")
+    
+    # 注册认证中间件
+    mcp.add_middleware(AuthMiddleware())
 
     # 注册所有MCP组件
     register_all_tools(mcp)      # 注册工具
@@ -60,10 +99,7 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         os.makedirs('data/backtest', exist_ok=True)
         os.makedirs('data/templates', exist_ok=True)
 
-        # 检查配置文件
-        if not os.path.exists('data/config/auth.json'):
-            logger.warning("认证配置文件不存在，请复制 data/config/auth.json.example 并填写认证信息")
-            print("警告: 认证配置文件不存在，请复制 data/config/auth.json.example 并填写认证信息", file=sys.stderr)
+        # 不再检查配置文件，而是通过MCP客户端配置获取认证信息
 
         # 生成测试HTML文件
         try:

@@ -7,7 +7,6 @@
 """
 
 import os
-import json
 import logging
 from pathlib import Path
 
@@ -44,42 +43,5 @@ LOG_LEVEL = logging.INFO
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_FILE = LOG_DIR / 'quant_mcp.log'
 
-# 认证信息
-TOKEN = None
-USER_ID = None
-
-def load_auth_config():
-    """
-    从配置文件加载认证信息
-
-    Returns:
-        bool: 加载是否成功
-    """
-    global TOKEN, USER_ID
-
-    # 检查配置文件是否存在
-    config_file = CONFIG_DIR / 'auth.json'
-    if not config_file.exists():
-        error_msg = f"错误: 登录配置文件 {config_file} 不存在，请先创建配置文件"
-        logging.error(error_msg)
-        return False
-
-    try:
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-            TOKEN = config.get('token')
-            USER_ID = config.get('user_id')
-
-        if not TOKEN or not USER_ID:
-            error_msg = "错误: 配置文件中缺少token或user_id"
-            logging.error(error_msg)
-            return False
-
-        return True
-    except Exception as e:
-        error_msg = f"错误: 读取配置文件失败: {e}"
-        logging.error(error_msg)
-        return False
-
-# 加载认证配置
-load_auth_config()
+# 认证信息 - 由MCP客户端配置提供，不再从文件加载
+# 具体实现在utils/auth_utils.py中

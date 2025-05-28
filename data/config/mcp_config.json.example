@@ -1,0 +1,17 @@
+{
+  "quant_sse": {
+    "autoApprove": [
+      "get_kline_data",
+      "delete_user_strategy",
+      "get_strategy",
+      "get_stock_info",
+      "list_strategies",
+      "backtest_with_stock",
+      "search_stocks"
+    ],
+    "disabled": false,
+    "timeout": 10,
+    "url": "http://54.146.177.164:8000/sse",
+    "transportType": "sse"
+  }
+} 

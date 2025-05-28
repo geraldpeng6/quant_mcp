@@ -77,7 +77,3 @@ data/charts/
 data/klines/
 data/backtest/
 *.log
-
-# Keep config examples but ignore actual configs with credentials
-data/config/auth.json
-!data/config/auth.json.example
