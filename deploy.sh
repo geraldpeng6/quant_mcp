@@ -689,6 +689,92 @@ fi
 
 # 创建一个简单的systemd服务文件
 print_section "创建系统服务"
+
+# 先测试服务能否正常启动
+print_section "测试服务启动"
+echo "在创建系统服务前，先测试服务能否正常启动..."
+
+# 确保虚拟环境已激活
+if [ -z "$VIRTUAL_ENV" ]; then
+    source "$PROJECT_DIR/.venv/bin/activate"
+fi
+
+# 检查auth.json配置文件
+if [ ! -f "$PROJECT_DIR/data/config/auth.json" ]; then
+    echo -e "${YELLOW}警告: auth.json配置文件不存在，创建一个临时配置文件用于测试${NC}"
+    # 创建一个临时的auth.json文件
+    mkdir -p "$PROJECT_DIR/data/config"
+    echo '{
+  "token": "test_token",
+  "user_id": "test_user"
+}' > "$PROJECT_DIR/data/config/auth.json"
+fi
+
+# 测试端口是否可用
+PORT_CHECK=$(netstat -tuln | grep ":$SERVER_PORT" || echo "")
+if [ -n "$PORT_CHECK" ]; then
+    echo -e "${YELLOW}警告: 端口 $SERVER_PORT 已被占用:${NC}"
+    echo "$PORT_CHECK"
+    echo -e "${YELLOW}尝试使用其他端口...${NC}"
+    # 寻找可用端口
+    for TEST_PORT in 8001 8002 8003 8004 8005; do
+        if [ -z "$(netstat -tuln | grep ":$TEST_PORT")" ]; then
+            echo -e "${GREEN}发现可用端口: $TEST_PORT${NC}"
+            SERVER_PORT=$TEST_PORT
+            break
+        fi
+    done
+fi
+
+# 运行简短的测试启动
+echo "测试启动服务 (将在5秒后终止)..."
+(cd "$PROJECT_DIR" && timeout 5 "$PROJECT_DIR/.venv/bin/python" "$PROJECT_DIR/server.py" --transport streamable-http --port "$SERVER_PORT" > "$PROJECT_DIR/server_test.log" 2>&1) &
+TEST_PID=$!
+
+# 等待几秒让服务启动
+sleep 5
+
+# 检查服务是否还在运行
+if kill -0 $TEST_PID 2>/dev/null; then
+    echo -e "${GREEN}服务成功启动，正在运行${NC}"
+    kill $TEST_PID
+else
+    echo -e "${RED}服务启动失败，检查日志:${NC}"
+    cat "$PROJECT_DIR/server_test.log"
+    
+    # 尝试查找常见的错误
+    if grep -q "ModuleNotFoundError" "$PROJECT_DIR/server_test.log"; then
+        echo -e "${RED}缺少Python模块，尝试重新安装依赖${NC}"
+        if command_exists uv; then
+            uv pip install -r "$PROJECT_DIR/requirements.txt"
+        else
+            python -m pip install -r "$PROJECT_DIR/requirements.txt"
+        fi
+        
+        # 再次尝试
+        echo "重新尝试启动服务..."
+        (cd "$PROJECT_DIR" && timeout 5 "$PROJECT_DIR/.venv/bin/python" "$PROJECT_DIR/server.py" --transport streamable-http --port "$SERVER_PORT" > "$PROJECT_DIR/server_test_2.log" 2>&1) &
+        TEST_PID_2=$!
+        sleep 5
+        
+        if kill -0 $TEST_PID_2 2>/dev/null; then
+            echo -e "${GREEN}服务成功启动，正在运行${NC}"
+            kill $TEST_PID_2
+        else
+            echo -e "${RED}服务再次启动失败，检查日志:${NC}"
+            cat "$PROJECT_DIR/server_test_2.log"
+        fi
+    fi
+    
+    echo -e "${YELLOW}警告: 服务测试启动可能失败，但仍将继续创建系统服务${NC}"
+    echo -e "${YELLOW}请检查日志文件 $PROJECT_DIR/server_test.log 了解详细错误信息${NC}"
+fi
+
+# 创建日志目录
+mkdir -p /var/log/quantmcp
+chmod 755 /var/log/quantmcp
+
+# 创建systemd服务文件
 SERVICE_FILE="/etc/systemd/system/quantmcp.service"
 sudo tee $SERVICE_FILE > /dev/null << EOF
 [Unit]
@@ -700,6 +786,9 @@ Type=simple
 User=$(whoami)
 WorkingDirectory=${PROJECT_DIR}
 ExecStart=${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/server.py --transport streamable-http --port ${SERVER_PORT}
+Environment="PYTHONUNBUFFERED=1"
+StandardOutput=append:/var/log/quantmcp/service.log
+StandardError=append:/var/log/quantmcp/error.log
 Restart=on-failure
 RestartSec=5s
 
@@ -714,24 +803,54 @@ check_error "systemd配置重载失败"
 # 启动服务
 print_section "启动服务"
 sudo systemctl start quantmcp
-check_error "服务启动失败"
+sleep 3  # 给服务一些启动时间
+
+# 检查服务状态详细信息
+sudo systemctl status quantmcp --no-pager
+SERVICE_STATUS=$(sudo systemctl is-active quantmcp)
 
 # 设置开机启动
 sudo systemctl enable quantmcp
-check_error "设置服务开机启动失败"
 
 # 测试服务
 print_section "测试服务"
-sleep 5 # 等待服务启动
 
 # 检查服务状态
-SERVICE_STATUS=$(sudo systemctl is-active quantmcp)
 if [ "$SERVICE_STATUS" = "active" ]; then
     echo -e "${GREEN}量化交易助手服务已成功启动${NC}"
 else
     echo -e "${RED}服务启动失败，状态: $SERVICE_STATUS${NC}"
-    sudo systemctl status quantmcp
-    exit 1
+    
+    # 显示详细的日志
+    echo "查看服务日志:"
+    sudo journalctl -u quantmcp --no-pager -n 20
+    
+    # 检查日志文件
+    if [ -f "/var/log/quantmcp/error.log" ]; then
+        echo -e "\n服务错误日志 (/var/log/quantmcp/error.log):"
+        tail -n 20 /var/log/quantmcp/error.log
+    fi
+    
+    # 直接运行一次查看错误
+    echo -e "\n直接运行服务脚本以查看错误:"
+    cd "$PROJECT_DIR" && "$PROJECT_DIR/.venv/bin/python" -u "$PROJECT_DIR/server.py" --transport streamable-http --port "$SERVER_PORT" &
+    DIRECT_PID=$!
+    sleep 5
+    kill $DIRECT_PID 2>/dev/null
+    
+    # 如果服务无法启动，提供进一步的调试建议
+    echo -e "\n${YELLOW}服务启动失败。请尝试以下调试步骤:${NC}"
+    echo "1. 检查依赖是否正确安装: pip list"
+    echo "2. 检查auth.json配置文件是否正确"
+    echo "3. 检查端口 $SERVER_PORT 是否已被占用: netstat -tuln | grep :$SERVER_PORT"
+    echo "4. 手动运行服务查看错误: cd $PROJECT_DIR && .venv/bin/python server.py"
+    
+    read -p "是否继续部署过程? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "部署已取消"
+        exit 1
+    fi
 fi
 
 # 获取服务器IP
