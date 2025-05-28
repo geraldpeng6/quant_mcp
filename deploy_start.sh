@@ -3,6 +3,9 @@
 # 部署和启动MCP服务器脚本
 # 此脚本集成了部署和启动功能，同时处理Nginx配置
 
+# 获取脚本所在目录的绝对路径
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # 颜色定义
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -681,10 +684,24 @@ check_ports() {
     
     if [ "$MACHINE" = "Linux" ]; then
         echo -e "${YELLOW}MCP服务器端口 ($PORT) 监听状态:${NC}"
-        sudo netstat -tulpn | grep ":$PORT " || echo "端口 $PORT 未在监听!"
+        
+        # 首先尝试使用ss命令，如果不存在则尝试netstat
+        if command -v ss &> /dev/null; then
+            sudo ss -tulnp | grep ":$PORT " || echo "端口 $PORT 未在监听!"
+        elif command -v netstat &> /dev/null; then
+            sudo netstat -tulpn | grep ":$PORT " || echo "端口 $PORT 未在监听!"
+        else
+            echo "缺少网络工具 ss 或 netstat，无法检查端口状态"
+        fi
         
         echo -e "${YELLOW}HTML服务器端口 ($HTML_PORT) 监听状态:${NC}"
-        sudo netstat -tulpn | grep ":$HTML_PORT " || echo "端口 $HTML_PORT 未在监听!"
+        if command -v ss &> /dev/null; then
+            sudo ss -tulnp | grep ":$HTML_PORT " || echo "端口 $HTML_PORT 未在监听!"
+        elif command -v netstat &> /dev/null; then
+            sudo netstat -tulpn | grep ":$HTML_PORT " || echo "端口 $HTML_PORT 未在监听!"
+        else
+            echo "缺少网络工具 ss 或 netstat，无法检查端口状态"
+        fi
         
         # 添加防火墙规则
         if command -v ufw &> /dev/null; then
@@ -763,22 +780,24 @@ main() {
     # 设置数据目录权限
     echo "设置数据目录权限..."
     sudo chmod 755 /home/ubuntu
-    sudo chmod -R 755 $DIR/data/charts
-    sudo chown -R www-data:www-data $DIR/data/charts
+    sudo chmod -R 755 "$DIR/data/charts"
+    sudo chown -R www-data:www-data "$DIR/data/charts"
 
     # 设置auth.json并设置权限
     echo "设置auth.json权限..."
+    sudo mkdir -p "$DIR/data/config"
     if [ -f "$DIR/data/config/auth.json" ]; then
-        sudo chown root:root $DIR/data/config/auth.json
-        sudo chmod 600 $DIR/data/config/auth.json
+        sudo chown root:root "$DIR/data/config/auth.json"
+        sudo chmod 600 "$DIR/data/config/auth.json"
     else
-        echo "{}" | sudo tee $DIR/data/config/auth.json > /dev/null
-        sudo chown root:root $DIR/data/config/auth.json
-        sudo chmod 600 $DIR/data/config/auth.json
+        echo "{}" | sudo tee "$DIR/data/config/auth.json" > /dev/null
+        sudo chown root:root "$DIR/data/config/auth.json"
+        sudo chmod 600 "$DIR/data/config/auth.json"
     fi
 
     # 重启Nginx以应用更改
-    sudo systemctl restart nginx
+    echo "重启Nginx服务..."
+    sudo systemctl restart nginx || echo "警告: Nginx重启失败，请检查配置"
 }
 
 # 执行主函数
