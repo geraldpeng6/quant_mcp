@@ -12,6 +12,38 @@ import os
 import inspect
 from mcp.server.fastmcp import FastMCP
 
+# 在导入FastMCP之后，导入前设置环境变量
+os.environ['UVICORN_HOST'] = '0.0.0.0'  # 强制Uvicorn绑定到0.0.0.0
+
+# 导入monkey patch函数
+import importlib
+import types
+
+# FastMCP内部可能使用的Uvicorn启动函数打补丁
+def patch_uvicorn():
+    """打补丁修复Uvicorn的绑定地址问题"""
+    try:
+        # 尝试找到uvicorn模块
+        uvicorn = importlib.import_module('uvicorn')
+        
+        # 保存原始运行函数
+        original_run = uvicorn.run
+        
+        # 创建一个包装函数，强制host为0.0.0.0
+        def patched_run(*args, **kwargs):
+            # 强制设置host为0.0.0.0
+            kwargs['host'] = '0.0.0.0'
+            return original_run(*args, **kwargs)
+        
+        # 替换原始函数
+        uvicorn.run = patched_run
+        print("成功打补丁修复Uvicorn绑定地址")
+    except Exception as e:
+        print(f"打补丁失败: {e}")
+
+# 应用补丁
+patch_uvicorn()
+
 from utils.logging_utils import setup_logging
 from utils.html_server import generate_test_html, is_nginx_available
 from src.tools import register_all_tools
@@ -53,6 +85,11 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         port: 端口号，当使用 'sse' 或 'streamable-http' 传输协议时有效
     """
     try:
+        # 强制设置环境变量
+        os.environ['UVICORN_HOST'] = host
+        os.environ['HOST'] = host
+        os.environ['BIND'] = host
+        
         # 确保必要的目录存在
         os.makedirs('data/logs', exist_ok=True)
         os.makedirs('data/klines', exist_ok=True)
