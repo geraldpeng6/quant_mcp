@@ -14,7 +14,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import PromptMessage, TextContent, EmbeddedResource, TextResourceContents
 
 # 导入采样工具
-from src.utils.sampling_utils import request_sampling, SYSTEM_PROMPTS, MODEL_PREFERENCES
+# from src.utils.sampling_utils import request_sampling, SYSTEM_PROMPTS, MODEL_PREFERENCES (已删除)
 
 # 获取日志记录器
 logger = logging.getLogger('quant_mcp.technical_prompts')
