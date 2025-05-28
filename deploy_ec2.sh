@@ -334,6 +334,90 @@ check_port() {
     fi
 }
 
+# 获取公网IP - 直接在脚本中实现，不依赖配置文件
+get_public_ip() {
+    local IP=""
+    
+    # 检查IP是否有效（非占位符/保留IP）
+    is_valid_ip() {
+        local ip=$1
+        # 检查是否是有效的IP格式
+        if ! [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            return 1
+        fi
+        
+        # 排除常见测试/示例IP
+        if [[ $ip == "123.45.67.89" || $ip == "1.2.3.4" || $ip == "0.0.0.0" ]]; then
+            return 1
+        fi
+        
+        # 排除回环地址
+        if [[ $ip == "127."* ]]; then
+            return 1
+        fi
+        
+        # 排除保留IP范围
+        local ip1 ip2 ip3 ip4
+        IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$ip"
+        
+        # 排除私有IP
+        if [[ $ip1 -eq 10 || 
+               ($ip1 -eq 172 && $ip2 -ge 16 && $ip2 -le 31) || 
+               ($ip1 -eq 192 && $ip2 -eq 168) ]]; then
+            return 1
+        fi
+        
+        return 0
+    }
+    
+    # 方法1: 直接使用dig查询
+    if command -v dig >/dev/null 2>&1; then
+        echo -e "${YELLOW}尝试使用dig获取IP...${NC}"
+        IP=$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null)
+        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+            echo "$IP"
+            return
+        fi
+    fi
+    
+    # 方法2: 使用外部服务
+    echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
+    IP=$(curl -s -m 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '\n')
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo "$IP"
+        return
+    fi
+    
+    # 方法3: 使用外部服务备选
+    echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
+    IP=$(curl -s -m 5 https://ifconfig.me 2>/dev/null)
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo "$IP"
+        return
+    fi
+    
+    # 方法4: 另一个备选服务
+    echo -e "${YELLOW}尝试使用ipinfo.io获取IP...${NC}"
+    IP=$(curl -s -m 5 https://ipinfo.io/ip 2>/dev/null)
+    if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+        echo "$IP"
+        return
+    fi
+    
+    # 获取本地IP
+    echo -e "${YELLOW}无法获取公网IP，尝试获取本地IP...${NC}"
+    if command -v hostname >/dev/null 2>&1; then
+        IP=$(hostname -I | awk '{print $1}')
+        if [[ -n "$IP" ]] && [[ $IP != "127.0.0.1" ]]; then
+            echo "$IP"
+            return
+        fi
+    fi
+    
+    # 如果所有方法都失败，返回localhost
+    echo "localhost"
+}
+
 # 创建systemd服务
 create_systemd_service() {
     echo -e "${YELLOW}创建systemd服务...${NC}"
@@ -341,7 +425,27 @@ create_systemd_service() {
     # 获取当前目录
     CURRENT_DIR=$(pwd)
     
-    # 创建MCP服务文件
+    # 创建启动脚本，避免在systemd文件中使用复杂的内联Python
+    cat > "$CURRENT_DIR/start_mcp.sh" << EOF
+#!/bin/bash
+# 设置必要的环境变量
+export MCP_ENV="production"
+export MCP_SERVER_HOST="0.0.0.0"
+export UVICORN_HOST="0.0.0.0"
+export HOST="0.0.0.0"
+export BIND="0.0.0.0"
+
+# 激活虚拟环境
+source "$CURRENT_DIR/.venv/bin/activate"
+
+# 启动服务器，明确指定主机为0.0.0.0
+python "$CURRENT_DIR/server.py" --transport "$TRANSPORT" --host 0.0.0.0 --port $PORT
+EOF
+    
+    # 使启动脚本可执行
+    chmod +x "$CURRENT_DIR/start_mcp.sh"
+    
+    # 创建更简单的systemd服务文件
     sudo bash -c "cat > /etc/systemd/system/mcp.service << EOF
 [Unit]
 Description=MCP Server
@@ -351,18 +455,7 @@ After=network.target
 Type=simple
 User=$(whoami)
 WorkingDirectory=$CURRENT_DIR
-Environment=\"MCP_ENV=production\"
-Environment=\"MCP_SERVER_HOST=$PUBLIC_IP\"
-Environment=\"UVICORN_HOST=0.0.0.0\"
-ExecStart=$CURRENT_DIR/.venv/bin/python -c \"
-import os
-os.environ['HOST'] = '0.0.0.0'
-os.environ['BIND'] = '0.0.0.0'
-import sys
-sys.path.insert(0, '$CURRENT_DIR')
-from server import main
-main(host='0.0.0.0', port=$PORT, transport='$TRANSPORT')
-\"
+ExecStart=$CURRENT_DIR/start_mcp.sh
 Restart=on-failure
 RestartSec=5s
 
@@ -411,89 +504,6 @@ show_service_info() {
     echo -e "${YELLOW}获取服务信息...${NC}"
     
     # 获取公网IP - 检测真实IP，排除占位符IP
-    get_public_ip() {
-        local IP=""
-        
-        # 检查IP是否有效（非占位符/保留IP）
-        is_valid_ip() {
-            local ip=$1
-            # 检查是否是有效的IP格式
-            if ! [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                return 1
-            fi
-            
-            # 排除常见测试/示例IP
-            if [[ $ip == "123.45.67.89" || $ip == "1.2.3.4" || $ip == "0.0.0.0" ]]; then
-                return 1
-            fi
-            
-            # 排除回环地址
-            if [[ $ip == "127."* ]]; then
-                return 1
-            fi
-            
-            # 排除保留IP范围
-            local ip1 ip2 ip3 ip4
-            IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$ip"
-            
-            # 排除私有IP
-            if [[ $ip1 -eq 10 || 
-                 ($ip1 -eq 172 && $ip2 -ge 16 && $ip2 -le 31) || 
-                 ($ip1 -eq 192 && $ip2 -eq 168) ]]; then
-                return 1
-            fi
-            
-            return 0
-        }
-        
-        # 方法1: 直接使用dig查询
-        if command -v dig >/dev/null 2>&1; then
-            echo -e "${YELLOW}尝试使用dig获取IP...${NC}"
-            IP=$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null)
-            if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
-                echo "$IP"
-                return
-            fi
-        fi
-        
-        # 方法2: 使用外部服务
-        echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
-        IP=$(curl -s -m 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '\n')
-        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
-            echo "$IP"
-            return
-        fi
-        
-        # 方法3: 使用外部服务备选
-        echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
-        IP=$(curl -s -m 5 https://ifconfig.me 2>/dev/null)
-        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
-            echo "$IP"
-            return
-        fi
-        
-        # 方法4: 另一个备选服务
-        echo -e "${YELLOW}尝试使用ipinfo.io获取IP...${NC}"
-        IP=$(curl -s -m 5 https://ipinfo.io/ip 2>/dev/null)
-        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
-            echo "$IP"
-            return
-        fi
-        
-        # 获取本地IP
-        echo -e "${YELLOW}无法获取公网IP，尝试获取本地IP...${NC}"
-        if command -v hostname >/dev/null 2>&1; then
-            IP=$(hostname -I | awk '{print $1}')
-            if [[ -n "$IP" ]] && [[ $IP != "127.0.0.1" ]]; then
-                echo "$IP"
-                return
-            fi
-        fi
-        
-        # 如果所有方法都失败，返回localhost
-        echo "localhost"
-    }
-    
     PUBLIC_IP=$(get_public_ip)
     echo -e "${GREEN}成功获取IP: $PUBLIC_IP${NC}"
     
