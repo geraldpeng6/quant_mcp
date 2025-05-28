@@ -234,7 +234,28 @@ sudo journalctl -u mcp.service -f
 sudo nginx -t
 ```
 
-### 4. 手动重启服务
+### 4. 解决文件权限问题
+
+如果遇到"Permission denied"错误，可以尝试以下步骤：
+
+```bash
+# 设置正确的文件权限
+sudo chmod -R 755 /home/ubuntu/quant_mcp/data/charts
+sudo chmod 644 /home/ubuntu/quant_mcp/data/charts/test.html
+
+# 确保目录路径上的所有目录都有执行权限
+sudo chmod 755 /home/ubuntu
+sudo chmod 755 /home/ubuntu/quant_mcp
+sudo chmod 755 /home/ubuntu/quant_mcp/data
+
+# 将文件所有权更改为Nginx用户
+sudo chown -R www-data:www-data /home/ubuntu/quant_mcp/data/charts
+
+# 重启Nginx
+sudo systemctl restart nginx
+```
+
+### 5. 手动重启服务
 
 ```bash
 sudo systemctl restart nginx
