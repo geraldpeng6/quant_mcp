@@ -96,11 +96,30 @@ async def search_stocks(query: str, exchange: str = "ANY", symbol_type: str = ""
         str: 格式化的搜索结果，或错误信息
     """
     try:
+        # 记录入参
+        logger.info(f"search_stocks调用 - 参数: query='{query}', exchange='{exchange}', symbol_type='{symbol_type}'")
+        
+        # 检查auth状态
+        from utils.auth_utils import get_auth_info
+        token, user_id = get_auth_info()
+        if not token or not user_id:
+            logger.error("搜索股票失败: 认证信息不可用")
+            return f"搜索股票失败: 认证信息不可用，请确保已登录。查询关键词: '{query}'"
+        
+        logger.info(f"使用user_id: {user_id[:4]}*** 执行搜索")
+        
         # 从utils模块搜索股票
         symbols = search_symbols(query, exchange, symbol_type)
-
-        if not symbols:
+        
+        # 记录结果
+        if symbols is None:
+            logger.error(f"搜索股票返回None，查询关键词: '{query}'")
+            return f"搜索股票时发生错误，查询关键词: '{query}'"
+        elif not symbols:
+            logger.info(f"搜索无结果，查询关键词: '{query}'")
             return f"未找到与 '{query}' 匹配的股票"
+        else:
+            logger.info(f"搜索成功，找到 {len(symbols)} 个结果，查询关键词: '{query}'")
 
         # 格式化输出
         result_str = f"搜索结果 - 关键词: '{query}'\n\n"
@@ -129,7 +148,9 @@ async def search_stocks(query: str, exchange: str = "ANY", symbol_type: str = ""
         return result_str
 
     except Exception as e:
-        logger.error(f"搜索股票时发生错误: {e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"搜索股票时发生错误: {e}\n{error_trace}")
         return f"搜索股票时发生错误: {e}"
 
 

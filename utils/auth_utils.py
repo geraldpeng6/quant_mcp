@@ -8,6 +8,8 @@
 """
 
 import logging
+import os
+import json
 from typing import Dict, Optional, Tuple, List
 
 # 获取日志记录器
@@ -20,6 +22,9 @@ USER_ID = None
 # 自动批准的工具列表
 AUTO_APPROVE_TOOLS = []
 
+# 认证配置文件路径
+AUTH_CONFIG_FILE = "data/config/auth.json"
+
 
 def load_auth_config() -> bool:
     """
@@ -31,12 +36,41 @@ def load_auth_config() -> bool:
     Returns:
         bool: 始终返回True表示认证配置已加载
     """
+    global TOKEN, USER_ID
+    
+    # 首先检查是否已有认证信息
     token, user_id = get_auth_info()
     if token and user_id:
-        logger.debug("已加载认证配置")
+        logger.debug("已有认证配置，无需重新加载")
+        return True
+    
+    # 如果没有认证信息，尝试从auth.json文件加载
+    if TOKEN is None or USER_ID is None:
+        logger.warning("未找到认证信息，尝试从auth.json加载")
+        try:
+            if os.path.exists(AUTH_CONFIG_FILE):
+                with open(AUTH_CONFIG_FILE, 'r') as f:
+                    auth_data = json.load(f)
+                    if auth_data.get("token") and auth_data.get("user_id"):
+                        TOKEN = auth_data.get("token")
+                        USER_ID = auth_data.get("user_id")
+                        logger.info(f"从auth.json加载认证信息成功，用户ID: {USER_ID[:4]}***")
+                        return True
+                    else:
+                        logger.error("auth.json文件格式不正确，缺少token或user_id")
+            else:
+                logger.error(f"auth.json文件不存在: {AUTH_CONFIG_FILE}")
+        except Exception as e:
+            logger.error(f"从auth.json加载认证信息失败: {e}")
+    
+    # 再次检查认证状态
+    token, user_id = get_auth_info()
+    if token and user_id:
+        logger.info("认证信息已加载")
+        return True
     else:
-        logger.warning("未设置认证信息，可能会导致API请求失败")
-    return True
+        logger.warning("认证信息加载失败，可能会导致API请求失败")
+        return False
 
 
 def set_auth_from_mcp(token: Optional[str] = None, user_id: Optional[str] = None) -> None:

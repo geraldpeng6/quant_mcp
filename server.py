@@ -136,6 +136,10 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
     register_all_resources(mcp)  # 注册资源
     register_all_prompts(mcp)    # 注册提示模板
 
+    # 打印认证和工具注册状态
+    logger.info(f"MCP服务器 '{name}' 创建完成")
+    logger.info(f"认证中间件已注册，将从MCP客户端获取认证信息")
+    
     return mcp
 
 def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000):
