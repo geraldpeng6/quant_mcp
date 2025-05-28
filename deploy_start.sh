@@ -11,10 +11,11 @@ NC='\033[0m' # No Color
 
 # 默认参数
 TRANSPORT="sse"  # 默认使用SSE传输协议
-HOST="0.0.0.0"
+HOST="0.0.0.0"   # 默认绑定到所有接口
 PORT=8000
 HTML_PORT=8081
 DEPLOY_MODE="local"  # 默认为本地模式
+REDEPLOY=false       # 默认不是重新部署模式
 
 # 显示帮助信息
 show_help() {
@@ -27,12 +28,14 @@ show_help() {
     echo "  --html-port PORT          指定HTML服务器端口号 (默认: 8081)"
     echo "  -d, --deploy              部署模式，将安装依赖并配置系统服务"
     echo "  --production              生产环境模式，设置MCP_ENV=production"
+    echo "  -r, --redeploy            重新部署模式，重新配置并重启服务"
     echo ""
     echo "示例:"
     echo "  $0                        # 使用默认设置启动 (SSE, 0.0.0.0:8000)"
     echo "  $0 -t stdio               # 使用STDIO传输协议启动"
     echo "  $0 -d                     # 部署模式，安装依赖并配置系统服务"
     echo "  $0 -d --production        # 生产环境部署"
+    echo "  $0 -r                     # 重新部署，重新配置并重启服务"
     exit 0
 }
 
@@ -64,6 +67,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --production)
             export MCP_ENV="production"
+            shift
+            ;;
+        -r|--redeploy)
+            REDEPLOY=true
+            DEPLOY_MODE="deploy"  # 重新部署隐含部署模式
             shift
             ;;
         *)
@@ -288,13 +296,11 @@ setup_nginx() {
     # 获取charts目录的绝对路径
     CHARTS_DIR=$(pwd)/data/charts
     
-    # 检测操作系统和环境
-    if [ "$MACHINE" = "Linux" ]; then
-        if [ "$EUID" -ne 0 ] && [ "$DEPLOY_MODE" = "deploy" ]; then
-            echo -e "${YELLOW}注意: 需要root权限配置Nginx${NC}"
-            
-            # 创建临时配置文件
-            cat > mcp_html_server.conf << EOF
+    # 创建Nginx配置
+    create_nginx_config() {
+        local CONFIG_FILE=$1
+        
+        cat > "$CONFIG_FILE" << EOF
 # MCP HTML服务器配置
 server {
     listen $HTML_PORT;
@@ -331,6 +337,17 @@ server {
         location ~* \\.(php|py|js|json|txt|log|ini|conf)$ {
             deny all;
         }
+    }
+
+    # MCP服务器代理
+    location /sse {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_buffering off;
     }
 
     # 默认页面 - 生成一个测试页面
@@ -340,87 +357,29 @@ server {
     }
 }
 EOF
-            echo -e "${YELLOW}已创建Nginx配置文件: mcp_html_server.conf${NC}"
-            echo -e "${YELLOW}请手动复制此文件到Nginx配置目录:${NC}"
-            echo -e "${YELLOW}sudo cp mcp_html_server.conf /etc/nginx/conf.d/${NC}"
-            echo -e "${YELLOW}然后重新加载Nginx:${NC}"
-            echo -e "${YELLOW}sudo nginx -s reload${NC}"
+    }
+
+    # 检测操作系统和环境
+    if [ "$MACHINE" = "Linux" ]; then
+        # 创建临时配置文件
+        TEMP_CONF_FILE=$(mktemp)
+        create_nginx_config "$TEMP_CONF_FILE"
+        
+        # 复制到Nginx配置目录
+        NGINX_CONF_DIR="/etc/nginx/conf.d"
+        sudo mkdir -p "$NGINX_CONF_DIR"
+        sudo cp "$TEMP_CONF_FILE" "$NGINX_CONF_DIR/mcp_html_server.conf"
+        rm "$TEMP_CONF_FILE"
+        
+        # 测试配置
+        echo -e "${YELLOW}测试Nginx配置...${NC}"
+        if sudo nginx -t; then
+            # 重新加载Nginx
+            echo -e "${YELLOW}重启Nginx服务...${NC}"
+            sudo systemctl restart nginx || sudo service nginx restart
+            echo -e "${GREEN}Nginx配置已更新并重新加载${NC}"
         else
-            # 直接配置Nginx
-            if [ "$DEPLOY_MODE" = "deploy" ]; then
-                # 部署模式，直接写入配置文件
-                NGINX_CONF_DIR="/etc/nginx/conf.d"
-                if [ ! -d "$NGINX_CONF_DIR" ]; then
-                    sudo mkdir -p "$NGINX_CONF_DIR"
-                fi
-                
-                sudo bash -c "cat > $NGINX_CONF_DIR/mcp_html_server.conf << EOF
-# MCP HTML服务器配置
-server {
-    listen $HTML_PORT;
-    server_name _;
-    
-    # 允许跨域访问
-    add_header 'Access-Control-Allow-Origin' '*';
-    add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-
-    # 禁止访问隐藏文件
-    location ~ /\\. {
-        deny all;
-    }
-
-    # 静态文件服务
-    location /charts/ {
-        alias $CHARTS_DIR/;
-
-        # 只允许访问HTML文件
-        location ~* \\.(html)$ {
-            add_header Content-Type text/html;
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-            # 允许跨域访问
-            add_header 'Access-Control-Allow-Origin' '*';
-            add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-        }
-
-        # 禁止目录列表
-        autoindex off;
-
-        # 禁止访问其他类型的文件
-        location ~* \\.(php|py|js|json|txt|log|ini|conf)$ {
-            deny all;
-        }
-    }
-
-    # 默认页面 - 生成一个测试页面
-    location = / {
-        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p><p>当前时间: <span id="time"></span></p><script>document.getElementById("time").textContent = new Date().toLocaleString();</script></body></html>';
-        add_header Content-Type text/html;
-    }
-}
-EOF"
-                
-                # 测试配置
-                sudo nginx -t
-                
-                if [ $? -eq 0 ]; then
-                    # 重新加载Nginx
-                    sudo nginx -s reload
-                    echo -e "${GREEN}Nginx配置已更新并重新加载${NC}"
-                else
-                    echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
-                fi
-            else
-                # 非部署模式，使用Python生成配置
-                python -c "
-import sys
-sys.path.append('.')
-from utils.html_server import setup_nginx
-success, message = setup_nginx()
-print(message)
-"
-            fi
+            echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
         fi
     elif [ "$MACHINE" = "Mac" ]; then
         # macOS配置
@@ -429,59 +388,12 @@ print(message)
             mkdir -p "$NGINX_CONF_DIR"
         fi
         
-        cat > "$NGINX_CONF_DIR/mcp_html_server.conf" << EOF
-# MCP HTML服务器配置
-server {
-    listen $HTML_PORT;
-    server_name _;
-    
-    # 允许跨域访问
-    add_header 'Access-Control-Allow-Origin' '*';
-    add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-
-    # 禁止访问隐藏文件
-    location ~ /\\. {
-        deny all;
-    }
-
-    # 静态文件服务
-    location /charts/ {
-        alias $CHARTS_DIR/;
-
-        # 只允许访问HTML文件
-        location ~* \\.(html)$ {
-            add_header Content-Type text/html;
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-            # 允许跨域访问
-            add_header 'Access-Control-Allow-Origin' '*';
-            add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-        }
-
-        # 禁止目录列表
-        autoindex off;
-
-        # 禁止访问其他类型的文件
-        location ~* \\.(php|py|js|json|txt|log|ini|conf)$ {
-            deny all;
-        }
-    }
-
-    # 默认页面 - 生成一个测试页面
-    location = / {
-        return 200 '<html><head><title>MCP HTML服务器</title></head><body><h1>MCP HTML服务器</h1><p>服务器运行正常</p><p>当前时间: <span id="time"></span></p><script>document.getElementById("time").textContent = new Date().toLocaleString();</script></body></html>';
-        add_header Content-Type text/html;
-    }
-}
-EOF
+        create_nginx_config "$NGINX_CONF_DIR/mcp_html_server.conf"
         
         # 测试配置
-        nginx -t
-        
-        if [ $? -eq 0 ]; then
+        if nginx -t; then
             # 重新加载Nginx
-            brew services reload nginx
+            brew services restart nginx
             echo -e "${GREEN}Nginx配置已更新并重新加载${NC}"
         else
             echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
@@ -505,6 +417,12 @@ create_systemd_service() {
     # 获取当前目录
     CURRENT_DIR=$(pwd)
     
+    # 确保服务绑定到0.0.0.0
+    if [ "$HOST" != "0.0.0.0" ]; then
+        echo -e "${YELLOW}警告: 在部署模式下，HOST将被设为0.0.0.0以允许外部访问${NC}"
+        HOST="0.0.0.0"
+    fi
+    
     # 创建MCP服务文件
     sudo bash -c "cat > /etc/systemd/system/mcp.service << EOF
 [Unit]
@@ -517,8 +435,28 @@ User=$(whoami)
 WorkingDirectory=$CURRENT_DIR
 Environment=MCP_ENV=production
 ExecStart=$CURRENT_DIR/.venv/bin/python server.py --transport $TRANSPORT --host $HOST --port $PORT
-Restart=on-failure
+Restart=always
 RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+    # 创建mcp-nginx.service文件，确保Nginx在MCP服务器启动后启动
+    sudo bash -c "cat > /etc/systemd/system/mcp-nginx.service << EOF
+[Unit]
+Description=Nginx for MCP Server
+After=mcp.service
+Requires=mcp.service
+
+[Service]
+Type=forking
+ExecStartPre=/usr/sbin/nginx -t
+ExecStart=/usr/sbin/nginx
+ExecReload=/usr/sbin/nginx -s reload
+ExecStop=/usr/sbin/nginx -s stop
+TimeoutStopSec=5
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -529,12 +467,14 @@ EOF"
     
     # 启用服务
     sudo systemctl enable mcp.service
+    sudo systemctl enable mcp-nginx.service
     
     echo -e "${GREEN}systemd服务创建完成!${NC}"
     
     # 启动服务
     echo -e "${YELLOW}启动MCP服务...${NC}"
     sudo systemctl start mcp.service
+    sudo systemctl start mcp-nginx.service
     
     # 检查服务状态
     echo -e "${YELLOW}MCP服务状态:${NC}"
@@ -633,12 +573,56 @@ print(host)
     return 0
 }
 
+# 重新部署函数 - 重新配置并重启服务
+redeploy() {
+    echo -e "${YELLOW}开始重新部署...${NC}"
+    
+    # 停止服务
+    if [ "$MACHINE" = "Linux" ]; then
+        echo -e "${YELLOW}停止现有服务...${NC}"
+        sudo systemctl stop mcp.service || true
+        sudo systemctl stop mcp-nginx.service || true
+    fi
+    
+    # 配置HTML服务器
+    setup_html_server
+    
+    # 配置Nginx
+    setup_nginx
+    
+    # 确保服务器绑定地址正确
+    if [ "$HOST" != "0.0.0.0" ]; then
+        echo -e "${YELLOW}在重新部署模式下将服务器绑定地址设为0.0.0.0${NC}"
+        HOST="0.0.0.0"
+    fi
+    
+    if [ "$MACHINE" = "Linux" ]; then
+        # 重新创建systemd服务
+        create_systemd_service
+    else
+        # 直接启动
+        start_mcp
+    fi
+    
+    echo -e "${GREEN}重新部署完成！${NC}"
+    show_service_info
+}
+
 # 主函数
 main() {
+    if [ "$REDEPLOY" = true ]; then
+        redeploy
+        return 0
+    fi
+    
     if [ "$DEPLOY_MODE" = "deploy" ]; then
         echo -e "${YELLOW}开始部署MCP服务器...${NC}"
     else
         echo -e "${YELLOW}准备启动MCP服务器...${NC}"
+        
+        # 即使在非部署模式下，也要提示可能需要配置的重要内容
+        echo -e "${YELLOW}注意: 如需完全自动化安装和配置，请使用 -d 或 --deploy 参数${NC}"
+        echo -e "${YELLOW}当前为本地模式，将尝试进行基本配置${NC}"
     fi
     
     # 检测操作系统
@@ -659,8 +643,15 @@ main() {
     # 配置HTML服务器
     setup_html_server
     
-    # 配置Nginx
+    # 配置Nginx - 无论是否为部署模式都执行
     setup_nginx
+    
+    # 设置服务器绑定地址
+    # 确保默认情况下绑定到所有接口，特别是在部署模式下
+    if [ "$DEPLOY_MODE" = "deploy" ] && [ "$HOST" != "0.0.0.0" ]; then
+        echo -e "${YELLOW}在部署模式下将服务器绑定地址设为0.0.0.0${NC}"
+        HOST="0.0.0.0"
+    fi
     
     # 创建systemd服务（仅在Linux部署模式下）
     create_systemd_service
