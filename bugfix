@@ -1,0 +1,2064 @@
+ssh ubuntu@54.173.115.4 -i Downloads/aws_mc2_key.pem
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Total 3 (delta 2), reused 3 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (3/3), 323 bytes | 80.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   bbb9310..7ebf7f7  deploy     -> origin/deploy
+Updating bbb9310..7ebf7f7
+Fast-forward
+ deploy_ec2.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ ls
+EC2部署问题排查与解决方案.md  check_types.py  mcp_html_server.conf  server.py     start_mcp.sh.backup  test_nginx.sh
+README_EC2_DEPLOY.md          data            mock_ec2              src           stop_ec2_test.sh     utils
+README_TRANSPORT.md           deploy_ec2.sh   requirements.txt      start.sh      test_ec2_mode.sh
+README_hitrader.md            deploy_mcp.sh   scripts               start_mcp.sh  test_html_server.py
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_mcp.sh
+开始部署MCP服务器...
+检查系统依赖...
+已安装Python: Python 3.12.3
+已安装pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+已安装Nginx: nginx version: nginx/1.24.0 (Ubuntu)
+系统依赖检查完成!
+检查Python虚拟环境...
+虚拟环境已存在
+检查是否需要更新依赖...
+是否更新依赖? (y/n): n
+跳过依赖更新
+Python虚拟环境设置完成!
+成功获取IP: 尝试使用dig获取IP...
+54.173.115.4
+检查并修补server.py文件...
+server.py已经修补过，跳过修补
+检查认证配置文件...
+认证配置文件已存在
+认证配置检查完成!
+配置HTML服务器...
+HTML服务器配置文件已存在，尝试更新配置...
+HTML服务器配置文件已更新!
+生成测试HTML文件...
+高级测试HTML文件已生成，URL: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+HTML服务器配置完成!
+配置Nginx...
+重新加载Nginx失败: 2025/05/28 05:28:45 [notice] 55956#55956: signal process started
+2025/05/28 05:28:45 [error] 55956#55956: invalid PID number "" in "/run/nginx.pid"
+
+Nginx配置完成!
+配置Nginx反向代理...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Nginx反向代理配置成功!
+nginx.service is not active, cannot reload.
+Nginx反向代理配置失败，请检查配置!
+警告: Nginx反向代理配置有问题，可能无法从外部访问MCP服务
+检查端口 8000 是否可用...
+错误: 端口 8000 已被进程 55673 占用
+尝试终止占用进程...
+成功释放端口 8000
+检查端口 8081 是否可用...
+端口 8081 可用
+配置防火墙...
+使用UFW配置防火墙...
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+UFW防火墙配置完成!
+请确保AWS安全组允许端口 8000 和 8081 的入站流量
+创建systemd服务...
+systemd服务创建完成!
+启动服务...
+Nginx状态:
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:28:49 UTC; 1s ago
+       Docs: man:nginx(8)
+    Process: 56148 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 56150 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 56151 (nginx)
+      Tasks: 2 (limit: 1129)
+     Memory: 1.9M (peak: 2.1M)
+        CPU: 12ms
+     CGroup: /system.slice/nginx.service
+             ├─56151 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             └─56152 "nginx: worker process"
+
+May 28 05:28:49 ip-172-31-88-57 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+May 28 05:28:49 ip-172-31-88-57 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:28:51 UTC; 77ms ago
+   Main PID: 56158 (start_mcp.sh)
+      Tasks: 2 (limit: 1129)
+     Memory: 5.0M (peak: 5.2M)
+        CPU: 32ms
+     CGroup: /system.slice/mcp.service
+             ├─56158 /bin/bash /home/ubuntu/quant_mcp/start_mcp.sh
+             └─56160 python /home/ubuntu/quant_mcp/server.py --transport sse --host 0.0.0.0 --port 8000
+
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Main process exited, code=exited, status=143/n/a
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Failed with result 'exit-code'.
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Consumed 3.514s CPU time, 67.6M memory peak, 0B memory swap peak.
+May 28 05:28:50 ip-172-31-88-57 systemd[1]: mcp.service: Scheduled restart job, restart counter is at 1.
+May 28 05:28:51 ip-172-31-88-57 systemd[1]: Started mcp.service - MCP Server.
+服务已启动!
+获取服务信息...
+成功获取IP: 尝试使用dig获取IP...
+54.173.115.4
+部署完成!
+MCP服务器地址: http://尝试使用dig获取IP...
+54.173.115.4:8000
+MCP服务器SSE端点: http://尝试使用dig获取IP...
+54.173.115.4:8000/sse
+HTML服务器地址: http://尝试使用dig获取IP...
+54.173.115.4:8081
+测试HTML页面: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+验证服务是否正常运行...
+警告: 无法验证MCP服务器是否正常运行，运行故障诊断...
+运行故障诊断...
+检查服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:28:51 UTC; 289ms ago
+   Main PID: 56158 (start_mcp.sh)
+      Tasks: 2 (limit: 1129)
+     Memory: 14.5M (peak: 14.7M)
+        CPU: 137ms
+     CGroup: /system.slice/mcp.service
+             ├─56158 /bin/bash /home/ubuntu/quant_mcp/start_mcp.sh
+             └─56160 python /home/ubuntu/quant_mcp/server.py --transport sse --host 0.0.0.0 --port 8000
+
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Main process exited, code=exited, status=143/n/a
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Failed with result 'exit-code'.
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Consumed 3.514s CPU time, 67.6M memory peak, 0B memory swap peak.
+May 28 05:28:50 ip-172-31-88-57 systemd[1]: mcp.service: Scheduled restart job, restart counter is at 1.
+May 28 05:28:51 ip-172-31-88-57 systemd[1]: Started mcp.service - MCP Server.
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:28:49 UTC; 2s ago
+       Docs: man:nginx(8)
+    Process: 56148 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 56150 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 56151 (nginx)
+      Tasks: 2 (limit: 1129)
+     Memory: 5.6M (peak: 7.9M)
+        CPU: 68ms
+     CGroup: /system.slice/nginx.service
+             ├─56151 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             └─56152 "nginx: worker process"
+
+May 28 05:28:49 ip-172-31-88-57 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+May 28 05:28:49 ip-172-31-88-57 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.
+检查端口是否开放:
+tcp   LISTEN 0      511              0.0.0.0:8000      0.0.0.0:*    users:(("nginx",pid=56152,fd=6),("nginx",pid=56151,fd=6))
+tcp   LISTEN 0      511              0.0.0.0:8081      0.0.0.0:*    users:(("nginx",pid=56152,fd=5),("nginx",pid=56151,fd=5))
+检查MCP服务日志 (最后10行):
+May 28 05:28:45 ip-172-31-88-57 start_mcp.sh[55673]: INFO:     Shutting down
+May 28 05:28:45 ip-172-31-88-57 start_mcp.sh[55673]: INFO:     Waiting for application shutdown.
+May 28 05:28:45 ip-172-31-88-57 start_mcp.sh[55673]: INFO:     Application shutdown complete.
+May 28 05:28:45 ip-172-31-88-57 start_mcp.sh[55673]: INFO:     Finished server process [55673]
+May 28 05:28:45 ip-172-31-88-57 start_mcp.sh[55672]: Terminated
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Main process exited, code=exited, status=143/n/a
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Failed with result 'exit-code'.
+May 28 05:28:45 ip-172-31-88-57 systemd[1]: mcp.service: Consumed 3.514s CPU time, 67.6M memory peak, 0B memory swap peak.
+May 28 05:28:50 ip-172-31-88-57 systemd[1]: mcp.service: Scheduled restart job, restart counter is at 1.
+May 28 05:28:51 ip-172-31-88-57 systemd[1]: Started mcp.service - MCP Server.
+检查Nginx日志 (最后10行):
+2025/05/28 04:45:33 [emerg] 55657#55657: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:33 [emerg] 55657#55657: still could not bind()
+2025/05/28 04:45:49 [emerg] 55665#55665: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:49 [emerg] 55665#55665: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:49 [emerg] 55665#55665: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:49 [emerg] 55665#55665: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:49 [emerg] 55665#55665: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 04:45:49 [emerg] 55665#55665: still could not bind()
+2025/05/28 05:28:51 [alert] 56152#56152: 768 worker_connections are not enough
+2025/05/28 05:28:51 [error] 56152#56152: *763 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /ping HTTP/1.1", upstream: "http://127.0.0.1:8000/ping", host: "localhost"
+检查防火墙状态:
+Status: active
+
+To                         Action      From
+--                         ------      ----
+8081/tcp                   ALLOW       Anywhere                  
+8000/tcp                   ALLOW       Anywhere                  
+22/tcp                     ALLOW       Anywhere                  
+8081/tcp (v6)              ALLOW       Anywhere (v6)             
+8000/tcp (v6)              ALLOW       Anywhere (v6)             
+22/tcp (v6)                ALLOW       Anywhere (v6)             
+
+测试本地连接性:
+HTTP/1.1 502 Bad Gateway
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 28 May 2025 05:28:51 GMT
+Content-Type: text/html
+Content-Length: 166
+Connection: keep-alive
+
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 28 May 2025 05:28:51 GMT
+Content-Type: application/octet-stream
+Content-Length: 260
+Connection: keep-alive
+Content-Type: text/html
+
+如果仍然无法从外部访问服务，请尝试以下解决方案:
+1. 执行以下命令重启服务:
+   sudo systemctl restart mcp
+   sudo systemctl restart nginx
+2. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)
+3. 如果使用了反向代理，检查配置是否正确
+4. 尝试修改MCP服务定义:
+   sudo nano /etc/systemd/system/mcp.service
+   修改ExecStart行，确保使用0.0.0.0作为主机
+   sudo systemctl daemon-reload
+   sudo systemctl restart mcp
+故障诊断完成!
+部署过程完成!
+如果遇到访问问题，请执行 'sudo ./deploy_mcp.sh --troubleshoot' 运行故障诊断
+快速启动服务请使用 'sudo ./deploy_mcp.sh --start'
+ubuntu@ip-172-31-88-57:~/quant_mcp$    sudo rm -f /etc/nginx/conf.d/mcp_proxy.conf
+   sudo systemctl restart nginx
+   sudo systemctl restart mcp
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Total 3 (delta 2), reused 3 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (3/3), 616 bytes | 123.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   7ebf7f7..15018f5  deploy     -> origin/deploy
+Updating 7ebf7f7..15018f5
+Fast-forward
+ deploy_ec2.sh | 88 ++++++++++++----------------------------------------------------------------------------
+ 1 file changed, 12 insertions(+), 76 deletions(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_mcp.sh
+开始部署MCP服务器...
+检查系统依赖...
+已安装Python: Python 3.12.3
+已安装pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+已安装Nginx: nginx version: nginx/1.24.0 (Ubuntu)
+系统依赖检查完成!
+检查Python虚拟环境...
+虚拟环境已存在
+检查是否需要更新依赖...
+是否更新依赖? (y/n): y
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+依赖已更新!
+Python虚拟环境设置完成!
+成功获取IP: 尝试使用dig获取IP...
+54.173.115.4
+检查并修补server.py文件...
+server.py已经修补过，跳过修补
+检查认证配置文件...
+认证配置文件已存在
+认证配置检查完成!
+配置HTML服务器...
+HTML服务器配置文件已存在，尝试更新配置...
+HTML服务器配置文件已更新!
+生成测试HTML文件...
+高级测试HTML文件已生成，URL: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+HTML服务器配置完成!
+配置Nginx...
+Nginx配置成功，测试URL: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+Nginx配置完成!
+配置Nginx反向代理...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Nginx反向代理配置成功!
+Nginx反向代理配置完成!
+检查端口 8000 是否可用...
+错误: 端口 8000 已被进程 56674 占用
+尝试终止占用进程...
+错误: 无法释放端口 8000，仍被进程 56754
+56664 占用
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+Already up to date.
+ubuntu@ip-172-31-88-57:~/quant_mcp$    sudo kill -9 56754
+   sudo kill -9 56664
+ubuntu@ip-172-31-88-57:~/quant_mcp$    sudo ./deploy_mcp.sh -p 8001
+开始部署MCP服务器...
+检查系统依赖...
+已安装Python: Python 3.12.3
+已安装pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+已安装Nginx: nginx version: nginx/1.24.0 (Ubuntu)
+系统依赖检查完成!
+检查Python虚拟环境...
+虚拟环境已存在
+检查是否需要更新依赖...
+是否更新依赖? (y/n): n
+跳过依赖更新
+Python虚拟环境设置完成!
+成功获取IP: 尝试使用dig获取IP...
+54.173.115.4
+检查并修补server.py文件...
+server.py已经修补过，跳过修补
+检查认证配置文件...
+认证配置文件已存在
+认证配置检查完成!
+配置HTML服务器...
+HTML服务器配置文件已存在，尝试更新配置...
+HTML服务器配置文件已更新!
+生成测试HTML文件...
+高级测试HTML文件已生成，URL: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+HTML服务器配置完成!
+配置Nginx...
+重新加载Nginx失败: 2025/05/28 05:41:38 [notice] 56848#56848: signal process started
+2025/05/28 05:41:38 [error] 56848#56848: invalid PID number "" in "/run/nginx.pid"
+
+Nginx配置完成!
+配置Nginx反向代理...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Nginx反向代理配置成功!
+nginx.service is not active, cannot reload.
+Nginx反向代理配置失败，请检查配置!
+警告: Nginx反向代理配置有问题，可能无法从外部访问MCP服务
+检查端口 8001 是否可用...
+端口 8001 可用
+检查端口 8081 是否可用...
+端口 8081 可用
+配置防火墙...
+使用UFW配置防火墙...
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Rule added
+Rule added (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+UFW防火墙配置完成!
+请确保AWS安全组允许端口 8001 和 8081 的入站流量
+创建systemd服务...
+systemd服务创建完成!
+启动服务...
+Nginx状态:
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:41:40 UTC; 71ms ago
+       Docs: man:nginx(8)
+    Process: 57055 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 57057 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 57058 (nginx)
+      Tasks: 2 (limit: 1129)
+     Memory: 1.9M (peak: 2.0M)
+        CPU: 13ms
+     CGroup: /system.slice/nginx.service
+             ├─57058 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             └─57060 "nginx: worker process"
+
+May 28 05:41:40 ip-172-31-88-57 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+May 28 05:41:40 ip-172-31-88-57 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:41:32 UTC; 8s ago
+   Main PID: 56822 (start_mcp.sh)
+      Tasks: 2 (limit: 1129)
+     Memory: 67.4M (peak: 67.6M)
+        CPU: 1.066s
+     CGroup: /system.slice/mcp.service
+             ├─56822 /bin/bash /home/ubuntu/quant_mcp/start_mcp.sh
+             └─56823 python /home/ubuntu/quant_mcp/server.py --transport sse --host 0.0.0.0 --port 8000
+
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册投资组合管理提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册回测分析提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册K线数据采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: K线数据采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册交易策略采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 交易策略采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Started server process [56823]
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Waiting for application startup.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Application startup complete.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+服务已启动!
+获取服务信息...
+成功获取IP: 尝试使用dig获取IP...
+54.173.115.4
+部署完成!
+MCP服务器地址: http://尝试使用dig获取IP...
+54.173.115.4:8001
+MCP服务器SSE端点: http://尝试使用dig获取IP...
+54.173.115.4:8001/sse
+HTML服务器地址: http://尝试使用dig获取IP...
+54.173.115.4:8081
+测试HTML页面: http://尝试使用dig获取IP...
+54.173.115.4:8081/charts/test.html
+验证服务是否正常运行...
+警告: 无法验证MCP服务器是否正常运行，运行故障诊断...
+运行故障诊断...
+检查服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:41:32 UTC; 8s ago
+   Main PID: 56822 (start_mcp.sh)
+      Tasks: 2 (limit: 1129)
+     Memory: 67.4M (peak: 67.6M)
+        CPU: 1.066s
+     CGroup: /system.slice/mcp.service
+             ├─56822 /bin/bash /home/ubuntu/quant_mcp/start_mcp.sh
+             └─56823 python /home/ubuntu/quant_mcp/server.py --transport sse --host 0.0.0.0 --port 8000
+
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册投资组合管理提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册回测分析提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册K线数据采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: K线数据采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册交易策略采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 交易策略采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Started server process [56823]
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Waiting for application startup.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Application startup complete.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 05:41:40 UTC; 281ms ago
+       Docs: man:nginx(8)
+    Process: 57055 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 57057 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 57058 (nginx)
+      Tasks: 2 (limit: 1129)
+     Memory: 5.5M (peak: 7.7M)
+        CPU: 66ms
+     CGroup: /system.slice/nginx.service
+             ├─57058 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             └─57060 "nginx: worker process"
+
+May 28 05:41:40 ip-172-31-88-57 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+May 28 05:41:40 ip-172-31-88-57 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.
+检查端口是否开放:
+tcp   LISTEN 0      511              0.0.0.0:8001      0.0.0.0:*    users:(("nginx",pid=57060,fd=6),("nginx",pid=57058,fd=6))
+tcp   LISTEN 0      511              0.0.0.0:8081      0.0.0.0:*    users:(("nginx",pid=57060,fd=5),("nginx",pid=57058,fd=5))
+检查MCP服务日志 (最后10行):
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册投资组合管理提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册回测分析提示模板
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册K线数据采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: K线数据采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 注册交易策略采样配置
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: 交易策略采样配置已注册
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Started server process [56823]
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Waiting for application startup.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Application startup complete.
+May 28 05:41:33 ip-172-31-88-57 start_mcp.sh[56823]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+检查Nginx日志 (最后10行):
+2025/05/28 05:29:40 [alert] 56152#56152: 768 worker_connections are not enough
+2025/05/28 05:29:40 [error] 56152#56152: *2292 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /sse HTTP/1.1", upstream: "http://127.0.0.1:8000/sse", host: "54.173.115.4"
+2025/05/28 05:29:41 [alert] 56152#56152: 768 worker_connections are not enough
+2025/05/28 05:29:41 [error] 56152#56152: *3055 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /favicon.ico HTTP/1.1", upstream: "http://127.0.0.1:8000/favicon.ico", host: "54.173.115.4", referrer: "http://54.173.115.4:8000/sse"
+2025/05/28 05:29:46 [alert] 56152#56152: 768 worker_connections are not enough
+2025/05/28 05:29:46 [error] 56152#56152: *3819 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /sse HTTP/1.1", upstream: "http://127.0.0.1:8000/sse", host: "54.173.115.4"
+2025/05/28 05:40:18 [emerg] 56664#56664: bind() to 0.0.0.0:8000 failed (98: Address already in use)
+2025/05/28 05:41:27 [alert] 56664#56664: worker process 56754 exited on signal 9
+2025/05/28 05:41:40 [alert] 57060#57060: 768 worker_connections are not enough
+2025/05/28 05:41:40 [error] 57060#57060: *763 recv() failed (104: Connection reset by peer) while reading response header from upstream, client: 127.0.0.1, server: _, request: "GET /ping HTTP/1.1", upstream: "http://127.0.0.1:8001/ping", host: "localhost"
+检查防火墙状态:
+Status: active
+
+To                         Action      From
+--                         ------      ----
+8081/tcp                   ALLOW       Anywhere                  
+8000/tcp                   ALLOW       Anywhere                  
+22/tcp                     ALLOW       Anywhere                  
+8001/tcp                   ALLOW       Anywhere                  
+8081/tcp (v6)              ALLOW       Anywhere (v6)             
+8000/tcp (v6)              ALLOW       Anywhere (v6)             
+22/tcp (v6)                ALLOW       Anywhere (v6)             
+8001/tcp (v6)              ALLOW       Anywhere (v6)             
+
+测试本地连接性:
+HTTP/1.1 502 Bad Gateway
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 28 May 2025 05:41:40 GMT
+Content-Type: text/html
+Content-Length: 166
+Connection: keep-alive
+
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 28 May 2025 05:41:40 GMT
+Content-Type: application/octet-stream
+Content-Length: 260
+Connection: keep-alive
+Content-Type: text/html
+
+如果仍然无法从外部访问服务，请尝试以下解决方案:
+1. 执行以下命令重启服务:
+   sudo systemctl restart mcp
+   sudo systemctl restart nginx
+2. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)
+3. 如果使用了反向代理，检查配置是否正确
+4. 尝试修改MCP服务定义:
+   sudo nano /etc/systemd/system/mcp.service
+   修改ExecStart行，确保使用0.0.0.0作为主机
+   sudo systemctl daemon-reload
+   sudo systemctl restart mcp
+故障诊断完成!
+部署过程完成!
+如果遇到访问问题，请执行 'sudo ./deploy_mcp.sh --troubleshoot' 运行故障诊断
+快速启动服务请使用 'sudo ./deploy_mcp.sh --start'
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo vim /etc/systemd/system/mcp.service
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo vim /home/ubuntu/quant_mcp/start_mcp.sh
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo vim /etc/nginx/conf.d/mcp_proxy.conf
+ubuntu@ip-172-31-88-57:~/quant_mcp$ # 1. Fix the start_mcp.sh to ensure it uses port 8000 (matching the current running service)
+sudo sed -i 's/--port 8001/--port 8000/g' /home/ubuntu/quant_mcp/start_mcp.sh
+
+# 2. Fix the Nginx proxy configuration to point to port 8000 instead of creating a loop
+sudo tee /etc/nginx/conf.d/mcp_proxy.conf > /dev/null << 'EOF'
+server {
+    listen 8001;
+    server_name _;
+
+    # 允许跨域访问
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+
+    # SSE端点代理
+    location /sse {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 36000s;
+    }
+
+    # MCP端点代理
+    location /mcp {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # 其他路径代理
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+curl http://localhost:8001/pingservicestch_uvicorn.pyfile__)))< 'EOF'
+
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx/1.24.0 (Ubuntu)</center>
+</body>
+</html>
+ubuntu@ip-172-31-88-57:~/quant_mcp$ 
+ubuntu@ip-172-31-88-57:~/quant_mcp$ # 1. Fix the start_mcp.sh to ensure it uses port 8000 (matching the current running service)
+sudo sed -i 's/--port 8001/--port 8000/g' /home/ubuntu/quant_mcp/start_mcp.sh
+
+# 2. Fix the Nginx proxy configuration to point to port 8000 instead of creating a loop
+sudo tee /etc/nginx/conf.d/mcp_proxy.conf > /dev/null << 'EOF'
+server {
+    listen 8001;
+    server_name _;
+
+    # 允许跨域访问
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+
+    # SSE端点代理
+    location /sse {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 36000s;
+    }
+
+    # MCP端点代理
+    location /mcp {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # 其他路径代理
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+curl http://localhost:8001/pingservicestch_uvicorn.pyfile__)))< 'EOF'
+
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx/1.24.0 (Ubuntu)</center>
+</body>
+</html>
+ubuntu@ip-172-31-88-57:~/quant_mcp$ 
+ubuntu@ip-172-31-88-57:~/quant_mcp$ # 3. Create a patch_uvicorn.py to force binding to 0.0.0.0
+                                    # 4. Make the patch executable
+                                    # 5. Apply changes and restarls
+ubuntu@ip-172-31-88-57:~/quant_mcp$ lsls
+Command 'lsls' not found, did you mean:
+  command 'lsns' from deb util-linux (2.39.3-9ubuntu6.2)
+Try: sudo apt install <deb name>
+ubuntu@ip-172-31-88-57:~/quant_mcp$ 
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo systemctl daemon-reload
+sudo systemctl restart mcp
+sudo systemctl restart nginx
+ubuntu@ip-172-31-88-57:~/quant_mcp$ curl http://localhost:8001/ping
+sudo systemctl status mcp
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx/1.24.0 (Ubuntu)</center>
+</body>
+</html>
+○ mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: inactive (dead) since Wed 2025-05-28 05:57:31 UTC; 4s ago
+   Duration: 1.146s
+    Process: 57386 ExecStart=/home/ubuntu/quant_mcp/start_mcp.sh (code=exited, status=0/SUCCESS)
+   Main PID: 57386 (code=exited, status=0/SUCCESS)
+        CPU: 1.064s
+
+May 28 05:57:30 ip-172-31-88-57 systemd[1]: Started mcp.service - MCP Server.
+May 28 05:57:31 ip-172-31-88-57 start_mcp.sh[57388]: 成功打补丁修复Uvicorn绑定地址
+May 28 05:57:31 ip-172-31-88-57 start_mcp.sh[57388]: 成功打补丁修复Uvicorn绑定地址
+May 28 05:57:31 ip-172-31-88-57 systemd[1]: mcp.service: Deactivated successfully.
+May 28 05:57:31 ip-172-31-88-57 systemd[1]: mcp.service: Consumed 1.064s CPU time.
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 11, done.
+remote: Counting objects: 100% (11/11), done.
+remote: Compressing objects: 100% (5/5), done.
+remote: Total 11 (delta 6), reused 11 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (11/11), 8.88 KiB | 1010.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   15018f5..00e8182  deploy     -> origin/deploy
+ * [new branch]      final      -> origin/final
+Updating 15018f5..00e8182
+Fast-forward
+ deploy_ec2.sh | 117 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------
+ 1 file changed, 84 insertions(+), 33 deletions(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ checkout final
+checkout: command not found
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git checkout final
+error: Your local changes to the following files would be overwritten by checkout:
+	data/config/html_server.json
+	start_mcp.sh
+Please commit your changes or stash them before you switch branches.
+Aborting
+ubuntu@ip-172-31-88-57:~/quant_mcp$ cd ..
+ubuntu@ip-172-31-88-57:~$ sudo rm -rf *
+ubuntu@ip-172-31-88-57:~$ ls
+ubuntu@ip-172-31-88-57:~$ git clone https://github.com/geraldpeng6/quant_mcp.git
+Cloning into 'quant_mcp'...
+remote: Enumerating objects: 535, done.
+remote: Counting objects: 100% (20/20), done.
+remote: Compressing objects: 100% (16/16), done.
+remote: Total 535 (delta 7), reused 13 (delta 4), pack-reused 515 (from 1)
+Receiving objects: 100% (535/535), 15.78 MiB | 28.85 MiB/s, done.
+Resolving deltas: 100% (272/272), done.
+ubuntu@ip-172-31-88-57:~$ ls
+quant_mcp
+ubuntu@ip-172-31-88-57:~$ cd quant_mcp
+ubuntu@ip-172-31-88-57:~/quant_mcp$ ls
+README_hitrader.md  configure_sse.sh  data  deploy  deploy_sse.sh  requirements.txt  scripts  server.py  src  test_sse.py  utils
+ubuntu@ip-172-31-88-57:~/quant_mcp$ cd data
+ubuntu@ip-172-31-88-57:~/quant_mcp/data$ ls
+config  templates  帮助文档
+ubuntu@ip-172-31-88-57:~/quant_mcp/data$ cd config
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ ls
+__init__.py  auth.json.example  proxy.json  settings.py
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ vim auth.json
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ ls
+__init__.py  auth.json  auth.json.example  proxy.json  settings.py
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ cd ..
+ubuntu@ip-172-31-88-57:~/quant_mcp/data$ cd ..
+ubuntu@ip-172-31-88-57:~/quant_mcp$ ls
+README_hitrader.md  configure_sse.sh  data  deploy  deploy_sse.sh  requirements.txt  scripts  server.py  src  test_sse.py  utils
+ubuntu@ip-172-31-88-57:~/quant_mcp$ vim configure_sse.sh
+ubuntu@ip-172-31-88-57:~/quant_mcp$ vim deploy_sse.sh 
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git checkout final
+branch 'final' set up to track 'origin/final'.
+Switched to a new branch 'final'
+ubuntu@ip-172-31-88-57:~/quant_mcp$ ls
+README.md             README_TRANSPORT.md  data             mcp_html_server.conf  scripts    src
+README_EC2_DEPLOY.md  check_types.py       deploy_start.sh  requirements.txt      server.py  utils
+ubuntu@ip-172-31-88-57:~/quant_mcp$ cd data
+ubuntu@ip-172-31-88-57:~/quant_mcp/data$ cd config
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ ls
+__init__.py  auth.json  auth.json.example  html_server.json  html_server.json.example  proxy.json  settings.py
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ cat auth.json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjpudWxsLCJhdmF0YXIiOm51bGwsImlhdCI6MTc0NjcwMDg0NywiZXhwIjoxNzQ5MjkyODQ3LCJpc3MiOiJodHRwczovL2hpdHJhZGVyLnl1ZW5pdXN6LmNvbS9mYWNhZGUvdXNlci1hdXRoIiwic3ViIjoibGF3a2pwYnYxa2M5IiwianRpIjoiMXMzdnYzcGJ4NWExdmJvdTdtNnpwIn0.FEprMG34YVoHzdM0BO-FkEY2xMtGzLQIJGjrYZDbNtI",
+  "user_id": "lawkjpbv1kc9"
+}
+
+ubuntu@ip-172-31-88-57:~/quant_mcp/data/config$ cd ..
+ubuntu@ip-172-31-88-57:~/quant_mcp/data$ cd ..
+ubuntu@ip-172-31-88-57:~/quant_mcp$ ls
+README.md             README_TRANSPORT.md  data             mcp_html_server.conf  scripts    src
+README_EC2_DEPLOY.md  check_types.py       deploy_start.sh  requirements.txt      server.py  utils
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh
+准备启动MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境不存在，正在创建...
+激活虚拟环境...
+安装依赖...
+Collecting mcp>=0.1.0 (from -r requirements.txt (line 2))
+  Using cached mcp-1.9.1-py3-none-any.whl.metadata (27 kB)
+Collecting pandas>=2.0.0 (from -r requirements.txt (line 3))
+  Using cached pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (89 kB)
+Collecting requests>=2.28.0 (from -r requirements.txt (line 4))
+  Using cached requests-2.32.3-py3-none-any.whl.metadata (4.6 kB)
+Collecting jinja2>=3.1.0 (from -r requirements.txt (line 5))
+  Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+Collecting numpy>=1.24.0 (from -r requirements.txt (line 6))
+  Using cached numpy-2.2.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (62 kB)
+Collecting paho-mqtt>=2.0.0 (from -r requirements.txt (line 7))
+  Using cached paho_mqtt-2.1.0-py3-none-any.whl.metadata (23 kB)
+Collecting pysocks>=1.7.1 (from -r requirements.txt (line 8))
+  Using cached PySocks-1.7.1-py3-none-any.whl.metadata (13 kB)
+Collecting anyio>=4.5 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached anyio-4.9.0-py3-none-any.whl.metadata (4.7 kB)
+Collecting httpx-sse>=0.4 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached httpx_sse-0.4.0-py3-none-any.whl.metadata (9.0 kB)
+Collecting httpx>=0.27 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting pydantic-settings>=2.5.2 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached pydantic_settings-2.9.1-py3-none-any.whl.metadata (3.8 kB)
+Collecting pydantic<3.0.0,>=2.7.2 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached pydantic-2.11.5-py3-none-any.whl.metadata (67 kB)
+Collecting python-multipart>=0.0.9 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+Collecting sse-starlette>=1.6.1 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached sse_starlette-2.3.5-py3-none-any.whl.metadata (7.8 kB)
+Collecting starlette>=0.27 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached starlette-0.46.2-py3-none-any.whl.metadata (6.2 kB)
+Collecting uvicorn>=0.23.1 (from mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached uvicorn-0.34.2-py3-none-any.whl.metadata (6.5 kB)
+Collecting python-dateutil>=2.8.2 (from pandas>=2.0.0->-r requirements.txt (line 3))
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting pytz>=2020.1 (from pandas>=2.0.0->-r requirements.txt (line 3))
+  Using cached pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
+Collecting tzdata>=2022.7 (from pandas>=2.0.0->-r requirements.txt (line 3))
+  Using cached tzdata-2025.2-py2.py3-none-any.whl.metadata (1.4 kB)
+Collecting charset-normalizer<4,>=2 (from requests>=2.28.0->-r requirements.txt (line 4))
+  Using cached charset_normalizer-3.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (35 kB)
+Collecting idna<4,>=2.5 (from requests>=2.28.0->-r requirements.txt (line 4))
+  Using cached idna-3.10-py3-none-any.whl.metadata (10 kB)
+Collecting urllib3<3,>=1.21.1 (from requests>=2.28.0->-r requirements.txt (line 4))
+  Using cached urllib3-2.4.0-py3-none-any.whl.metadata (6.5 kB)
+Collecting certifi>=2017.4.17 (from requests>=2.28.0->-r requirements.txt (line 4))
+  Using cached certifi-2025.4.26-py3-none-any.whl.metadata (2.5 kB)
+Collecting MarkupSafe>=2.0 (from jinja2>=3.1.0->-r requirements.txt (line 5))
+  Using cached MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+Collecting sniffio>=1.1 (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+Collecting typing_extensions>=4.5 (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached typing_extensions-4.13.2-py3-none-any.whl.metadata (3.0 kB)
+Collecting httpcore==1.* (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting annotated-types>=0.6.0 (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.33.2 (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+Collecting typing-inspection>=0.4.0 (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+Collecting python-dotenv>=0.21.0 (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached python_dotenv-1.1.0-py3-none-any.whl.metadata (24 kB)
+Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3))
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting click>=7.0 (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2))
+  Using cached click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+Using cached mcp-1.9.1-py3-none-any.whl (130 kB)
+Using cached pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (12.7 MB)
+Using cached requests-2.32.3-py3-none-any.whl (64 kB)
+Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+Using cached numpy-2.2.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.5 MB)
+Using cached paho_mqtt-2.1.0-py3-none-any.whl (67 kB)
+Using cached PySocks-1.7.1-py3-none-any.whl (16 kB)
+Using cached anyio-4.9.0-py3-none-any.whl (100 kB)
+Using cached certifi-2025.4.26-py3-none-any.whl (159 kB)
+Using cached charset_normalizer-3.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (148 kB)
+Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Using cached httpx_sse-0.4.0-py3-none-any.whl (7.8 kB)
+Using cached idna-3.10-py3-none-any.whl (70 kB)
+Using cached MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+Using cached pydantic-2.11.5-py3-none-any.whl (444 kB)
+Using cached pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+Using cached pydantic_settings-2.9.1-py3-none-any.whl (44 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached python_multipart-0.0.20-py3-none-any.whl (24 kB)
+Using cached pytz-2025.2-py2.py3-none-any.whl (509 kB)
+Using cached sse_starlette-2.3.5-py3-none-any.whl (10 kB)
+Using cached starlette-0.46.2-py3-none-any.whl (72 kB)
+Using cached tzdata-2025.2-py2.py3-none-any.whl (347 kB)
+Using cached urllib3-2.4.0-py3-none-any.whl (128 kB)
+Using cached uvicorn-0.34.2-py3-none-any.whl (62 kB)
+Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Using cached click-8.2.1-py3-none-any.whl (102 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Using cached python_dotenv-1.1.0-py3-none-any.whl (20 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Using cached sniffio-1.3.1-py3-none-any.whl (10 kB)
+Using cached typing_extensions-4.13.2-py3-none-any.whl (45 kB)
+Using cached typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+Installing collected packages: pytz, urllib3, tzdata, typing_extensions, sniffio, six, python-multipart, python-dotenv, pysocks, paho-mqtt, numpy, MarkupSafe, idna, httpx-sse, h11, click, charset-normalizer, certifi, annotated-types, uvicorn, typing-inspection, requests, python-dateutil, pydantic-core, jinja2, httpcore, anyio, starlette, pydantic, pandas, httpx, sse-starlette, pydantic-settings, mcp
+Successfully installed MarkupSafe-3.0.2 annotated-types-0.7.0 anyio-4.9.0 certifi-2025.4.26 charset-normalizer-3.4.2 click-8.2.1 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 httpx-sse-0.4.0 idna-3.10 jinja2-3.1.6 mcp-1.9.1 numpy-2.2.6 paho-mqtt-2.1.0 pandas-2.2.3 pydantic-2.11.5 pydantic-core-2.33.2 pydantic-settings-2.9.1 pysocks-1.7.1 python-dateutil-2.9.0.post0 python-dotenv-1.1.0 python-multipart-0.0.20 pytz-2025.2 requests-2.32.3 six-1.17.0 sniffio-1.3.1 sse-starlette-2.3.5 starlette-0.46.2 typing-inspection-0.4.1 typing_extensions-4.13.2 tzdata-2025.2 urllib3-2.4.0 uvicorn-0.34.2
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+Nginx配置成功，测试URL: http://123.45.67.89:8081/charts/test.html
+Nginx配置完成!
+生成测试HTML文件...
+测试HTML文件URL: http://123.45.67.89:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+^C
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 5, done.
+remote: Counting objects: 100% (5/5), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 5 (delta 3), reused 5 (delta 3), pack-reused 0 (from 0)
+Unpacking objects: 100% (5/5), 463 bytes | 154.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   93895bb..2508251  final      -> origin/final
+Updating 93895bb..2508251
+error: Your local changes to the following files would be overwritten by merge:
+	data/config/html_server.json
+Please commit your changes or stash them before you merge.
+Aborting
+ubuntu@ip-172-31-88-57:~/quant_mcp$ rm -f data/config/html_server.json
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+Updating 93895bb..2508251
+Fast-forward
+ data/config/html_server.json | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh
+准备启动MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+Nginx配置成功，测试URL: http://172.31.88.57:8081/charts/test.html
+Nginx配置完成!
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 200 OK
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+启动MCP服务器，使用SSE传输协议，地址: http://0.0.0.0:8000/sse
+测试HTML文件已生成，URL: http://172.31.88.57:8081/charts/test.html
+检测到Nginx已安装，HTML文件可通过Web服务器访问
+Resource already exists: symbol://list
+错误: 启动MCP服务器失败: No module named 'src.utils.sampling_utils'
+获取服务信息...
+部署和启动完成!
+MCP服务器地址: http://172.31.88.57:8000
+MCP服务器SSE端点: http://172.31.88.57:8000/sse
+HTML服务器地址: http://172.31.88.57:8081
+测试HTML页面: http://172.31.88.57:8081/charts/test.html
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 11, done.
+remote: Counting objects: 100% (11/11), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 11 (delta 8), reused 11 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (11/11), 950 bytes | 135.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   2508251..9eedb76  final      -> origin/final
+Updating 2508251..9eedb76
+Fast-forward
+ src/prompts/backtest_prompts.py    | 3 ---
+ src/prompts/fundamental_prompts.py | 3 ---
+ src/prompts/kline_prompts.py       | 3 ---
+ src/prompts/market_prompts.py      | 3 ---
+ src/prompts/portfolio_prompts.py   | 3 ---
+ src/prompts/strategy_prompts.py    | 3 ---
+ src/prompts/technical_prompts.py   | 2 +-
+ 7 files changed, 1 insertion(+), 19 deletions(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh
+准备启动MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+Nginx配置成功，测试URL: http://172.31.88.57:8081/charts/test.html
+Nginx配置完成!
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 200 OK
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+启动MCP服务器，使用SSE传输协议，地址: http://0.0.0.0:8000/sse
+测试HTML文件已生成，URL: http://172.31.88.57:8081/charts/test.html
+检测到Nginx已安装，HTML文件可通过Web服务器访问
+Resource already exists: symbol://list
+注册K线数据提示模板
+注册交易策略提示模板
+注册市场分析提示模板
+注册技术分析提示模板
+注册基本面分析提示模板
+注册投资组合管理提示模板
+注册回测分析提示模板
+启动量化交易助手MCP服务器，使用 sse 传输协议
+SSE服务器将在 http://0.0.0.0:8000/sse 上运行
+INFO:     Started server process [57992]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+exit
+^CINFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [57992]
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/quant_mcp/server.py", line 155, in <module>
+    run_server(transport=args.transport, host=args.host, port=args.port)
+  File "/home/ubuntu/quant_mcp/server.py", line 113, in run_server
+    mcp.run(transport=transport)
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/mcp/server/fastmcp/server.py", line 236, in run
+    anyio.run(lambda: self.run_sse_async(mount_path))
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/anyio/_core/_eventloop.py", line 74, in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2310, in run
+    return runner.run(wrapper())
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+ubuntu@ip-172-31-88-57:~/quant_mcp$  ps aux | grep server.py
+ubuntu     57998  0.0  0.2   7084  2048 pts/0    S+   06:53   0:00 grep --color=auto server.py
+ubuntu@ip-172-31-88-57:~/quant_mcp$    lsof -i :8000
+ubuntu@ip-172-31-88-57:~/quant_mcp$ lsof -i :8000
+ubuntu@ip-172-31-88-57:~/quant_mcp$ curl -N http://54.173.115.4:8000/sse
+curl: (7) Failed to connect to 54.173.115.4 port 8000 after 0 ms: Couldn't connect to server
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh
+准备启动MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+Nginx配置成功，测试URL: http://172.31.88.57:8081/charts/test.html
+Nginx配置完成!
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 200 OK
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+启动MCP服务器，使用SSE传输协议，地址: http://0.0.0.0:8000/sse
+测试HTML文件已生成，URL: http://172.31.88.57:8081/charts/test.html
+检测到Nginx已安装，HTML文件可通过Web服务器访问
+Resource already exists: symbol://list
+注册K线数据提示模板
+注册交易策略提示模板
+注册市场分析提示模板
+注册技术分析提示模板
+注册基本面分析提示模板
+注册投资组合管理提示模板
+注册回测分析提示模板
+启动量化交易助手MCP服务器，使用 sse 传输协议
+SSE服务器将在 http://0.0.0.0:8000/sse 上运行
+INFO:     Started server process [58246]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+^CINFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [58246]
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/quant_mcp/server.py", line 155, in <module>
+    run_server(transport=args.transport, host=args.host, port=args.port)
+  File "/home/ubuntu/quant_mcp/server.py", line 113, in run_server
+    mcp.run(transport=transport)
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/mcp/server/fastmcp/server.py", line 236, in run
+    anyio.run(lambda: self.run_sse_async(mount_path))
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/anyio/_core/_eventloop.py", line 74, in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/quant_mcp/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2310, in run
+    return runner.run(wrapper())
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh -d
+开始部署MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+安装系统依赖...
+Hit:1 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble InRelease
+Get:2 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Get:3 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+Get:4 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Get:5 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [161 kB]
+Get:6 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [376 kB]
+Get:7 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Components [212 B]
+Get:8 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+Get:9 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [7076 B]
+Get:10 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [16.4 kB]
+Get:11 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports/restricted amd64 Components [216 B]
+Get:12 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Components [212 B]
+Get:13 http://security.ubuntu.com/ubuntu noble-security/main amd64 Components [21.5 kB]
+Get:14 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Components [52.2 kB]
+Get:15 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Components [212 B]
+Get:16 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Components [208 B]
+Fetched 1015 kB in 1s (954 kB/s)           
+Reading package lists... Done
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+python3 is already the newest version (3.12.3-0ubuntu2).
+python3-pip is already the newest version (24.0+dfsg-1ubuntu1.1).
+python3-venv is already the newest version (3.12.3-0ubuntu2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+nginx is already the newest version (1.24.0-2ubuntu7.3).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+curl is already the newest version (8.5.0-2ubuntu10.6).
+git is already the newest version (1:2.43.0-1ubuntu7.2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+系统依赖安装完成!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+no-store,: line 24: warning: here-document at line 1 delimited by end-of-file (wanted `EOF')
+2025/05/28 06:59:46 [emerg] 58822#58822: unexpected end of file, expecting ";" or "}" in /etc/nginx/conf.d/mcp_html_server.conf:24
+nginx: configuration file /etc/nginx/nginx.conf test failed
+Nginx配置测试失败，请检查配置文件
+Nginx配置完成!
+创建systemd服务...
+systemd服务创建完成!
+启动MCP服务...
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 06:59:46 UTC; 35ms ago
+   Main PID: 58927 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 2.8M (peak: 2.9M)
+        CPU: 10ms
+     CGroup: /system.slice/mcp.service
+             └─58927 /home/ubuntu/quant_mcp/.venv/bin/python s…
+
+May 28 06:59:46 ip-172-31-88-57 systemd[1]: Started mcp.serv…r.
+Hint: Some lines were ellipsized, use -l to show in full.
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 200 OK
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+MCP服务器已通过systemd启动
+获取服务信息...
+部署和启动完成!
+MCP服务器地址: http://172.31.88.57:8000
+MCP服务器SSE端点: http://172.31.88.57:8000/sse
+HTML服务器地址: http://172.31.88.57:8081
+测试HTML页面: http://172.31.88.57:8081/charts/test.html
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh -d
+开始部署MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+安装系统依赖...
+Hit:1 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble InRelease
+Get:2 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+Hit:3 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Fetched 126 kB in 1s (214 kB/s)                      
+Reading package lists... Done
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+python3 is already the newest version (3.12.3-0ubuntu2).
+python3-pip is already the newest version (24.0+dfsg-1ubuntu1.1).
+python3-venv is already the newest version (3.12.3-0ubuntu2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+nginx is already the newest version (1.24.0-2ubuntu7.3).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+curl is already the newest version (8.5.0-2ubuntu10.6).
+git is already the newest version (1:2.43.0-1ubuntu7.2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+系统依赖安装完成!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+^[[APython环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+^[[Ano-store,: line 24: warning: here-document at line 1 delimited by end-of-file (wanted `EOF')
+2025/05/28 07:11:02 [emerg] 59545#59545: unexpected end of file, expecting ";" or "}" in /etc/nginx/conf.d/mcp_html_server.conf:24
+nginx: configuration file /etc/nginx/nginx.conf test failed
+Nginx配置测试失败，请检查配置文件
+Nginx配置完成!
+创建systemd服务...
+systemd服务创建完成!
+启动MCP服务...
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 06:59:46 UTC; 11min ago
+   Main PID: 58927 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.9M (peak: 70.8M)
+        CPU: 1.814s
+     CGroup: /system.slice/mcp.service
+             └─58927 /home/ubuntu/quant_mcp/.venv/bin/python s…
+
+May 28 06:59:49 ip-172-31-88-57 python[58927]: 注册回测分析…板
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Star…]
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Wait….
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Appl….
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Uvic…)
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 测试HTML文件…tml
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 检测到Nginx已…问
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 启动量化交易…议
+May 28 07:00:26 ip-172-31-88-57 python[58927]: SSE服务器将在…行
+May 28 07:00:26 ip-172-31-88-57 python[58927]: INFO:     127.…K
+Hint: Some lines were ellipsized, use -l to show in full.
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+MCP服务器已通过systemd启动
+获取服务信息...
+部署和启动完成!
+MCP服务器地址: http://172.31.88.57:8000
+MCP服务器SSE端点: http://172.31.88.57:8000/sse
+HTML服务器地址: http://172.31.88.57:8081
+测试HTML页面: http://172.31.88.57:8081/charts/test.html
+ubuntu@ip-172-31-88-57:~/quant_mcp$ git pull
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Total 3 (delta 2), reused 3 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (3/3), 1.75 KiB | 597.00 KiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   9eedb76..37b898e  final      -> origin/final
+Updating 9eedb76..37b898e
+Fast-forward
+ deploy_start.sh | 269 +++++++++++++++++++--------------------
+ 1 file changed, 130 insertions(+), 139 deletions(-)
+ubuntu@ip-172-31-88-57:~/quant_mcp$ sudo ./deploy_start.sh -d
+开始部署MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+安装系统依赖...
+Hit:1 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble InRelease
+Hit:2 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:3 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Reading package lists... Done
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+python3 is already the newest version (3.12.3-0ubuntu2).
+python3-pip is already the newest version (24.0+dfsg-1ubuntu1.1).
+python3-venv is already the newest version (3.12.3-0ubuntu2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+nginx is already the newest version (1.24.0-2ubuntu7.3).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+curl is already the newest version (8.5.0-2ubuntu10.6).
+git is already the newest version (1:2.43.0-1ubuntu7.2).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+系统依赖安装完成!
+检查 uv 是否已安装...
+uv 未安装，正在安装...
+downloading uv 0.7.8 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx...
+测试Nginx配置...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+重启Nginx服务...
+Nginx配置已更新并重新加载
+Nginx配置完成!
+创建systemd服务...
+Created symlink /etc/systemd/system/multi-user.target.wants/mcp-nginx.service → /etc/systemd/system/mcp-nginx.service.
+systemd服务创建完成!
+启动MCP服务...
+Job for mcp-nginx.service failed because the control process exited with error code.
+See "systemctl status mcp-nginx.service" and "journalctl -xeu mcp-nginx.service" for details.
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 06:59:46 UTC; 15min ago
+   Main PID: 58927 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.4M (peak: 70.8M)
+        CPU: 2.084s
+     CGroup: /system.slice/mcp.service
+             └─58927 /home/ubuntu/quant_mcp/.venv/bin/python s…
+
+May 28 06:59:49 ip-172-31-88-57 python[58927]: 注册回测分析…板
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Star…]
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Wait….
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Appl….
+May 28 06:59:49 ip-172-31-88-57 python[58927]: INFO:     Uvic…)
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 测试HTML文件…tml
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 检测到Nginx已…问
+May 28 07:00:26 ip-172-31-88-57 python[58927]: 启动量化交易…议
+May 28 07:00:26 ip-172-31-88-57 python[58927]: SSE服务器将在…行
+May 28 07:00:26 ip-172-31-88-57 python[58927]: INFO:     127.…K
+Hint: Some lines were ellipsized, use -l to show in full.
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.88.57:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 200 OK
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+MCP服务器已通过systemd启动
+获取服务信息...
+部署和启动完成!
+MCP服务器地址: http://172.31.88.57:8000
+MCP服务器SSE端点: http://172.31.88.57:8000/sse
+HTML服务器地址: http://172.31.88.57:8081
+测试HTML页面: http://172.31.88.57:8081/charts/test.html
+ubuntu@ip-172-31-88-57:~/quant_mcp$ cd ..
+ubuntu@ip-172-31-88-57:~$ ls
+quant_mcp
+ubuntu@ip-172-31-88-57:~$ 
+Broadcast message from root@ip-172-31-88-57 (Wed 2025-05-28 07:36:27 UTC):
+
+The system will power off now!
+
+Connection to 54.173.115.4 closed by remote host.
+Connection to 54.173.115.4 closed.
+ssh ubuntu@34.205.73.11 -i Downloads/aws_mc2_key.pem
+ssh: connect to host 34.205.73.11 port 22: Operation timed out
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-1024-aws x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Wed May 28 07:38:21 UTC 2025
+
+  System load:  0.29               Processes:             108
+  Usage of /:   12.4% of 13.49GB   Users logged in:       0
+  Memory usage: 21%                IPv4 address for enX0: 172.31.86.225
+  Swap usage:   0%
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+The list of available updates is more than a week old.
+To check for new updates run: sudo apt update
+
+
+   sudo chmod -R 755 /home/ubuntu/quant_mcp/data/charts
+   sudo chown -R www-data:www-data /home/ubuntu/quant_mcp/data/charts
+
+   ls -la /home/ubuntu/quant_mcp/data/charts/test.html
+-rwxr-xr-x 1 www-data www-data 1681 May 28 07:41 /home/ubuntu/quant_mcp/data/charts/test.html
+   sudo nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+   sudo ufw status
+   sudo ufw allow 8081
+   sudo ufw allow 8000
+Status: inactive
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+   sudo systemctl status mcp
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled;>
+     Active: active (running) since Wed 2025-05-28 07:41:16 UT>
+   Main PID: 3501 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.1M (peak: 71.4M)
+        CPU: 1.357s
+     CGroup: /system.slice/mcp.service
+             └─3501 /home/ubuntu/quant_mcp/.venv/bin/python se>
+
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册交易策略提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册市场分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册技术分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册基本面分析 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册投资组合管 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册回测分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Start>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Waiti>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Appli>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Uvico>
+lines 1-20/20 (END)...skipping...
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 07:41:16 UTC; 5min ago
+   Main PID: 3501 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.1M (peak: 71.4M)
+        CPU: 1.357s
+     CGroup: /system.slice/mcp.service
+             └─3501 /home/ubuntu/quant_mcp/.venv/bin/python server.py --transport sse --host 0.0.0.0 --port 8000
+
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册交易策略提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册市场分析提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册技术分析提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册基本面分析提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册投资组合管理提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册回测分析提示模板
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Started server process [3501]
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Waiting for application startup.
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Application startup complete.
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+lines 1-20/20 (END)
+sudo systemctl status mcp
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled;>
+     Active: active (running) since Wed 2025-05-28 07:41:16 UT>
+   Main PID: 3501 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.1M (peak: 71.4M)
+        CPU: 1.393s
+     CGroup: /system.slice/mcp.service
+             └─3501 /home/ubuntu/quant_mcp/.venv/bin/python se>
+
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册交易策略提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册市场分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册技术分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册基本面分析 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册投资组合管 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册回测分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Start>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Waiti>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Appli>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Uvico>
+...skipping...
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled;>
+     Active: active (running) since Wed 2025-05-28 07:41:16 UT>
+   Main PID: 3501 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 68.1M (peak: 71.4M)
+        CPU: 1.393s
+     CGroup: /system.slice/mcp.service
+             └─3501 /home/ubuntu/quant_mcp/.venv/bin/python se>
+
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册交易策略提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册市场分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册技术分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册基本面分析 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册投资组合管 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: 注册回测分析提 >
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Start>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Waiti>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Appli>
+May 28 07:41:17 ip-172-31-86-225 python[3501]: INFO:     Uvico>
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+
+git pull
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Total 3 (delta 2), reused 3 (delta 2), pack-reused 0 (from 0)
+Unpacking objects: 100% (3/3), 2.65 KiB | 2.65 MiB/s, done.
+From https://github.com/geraldpeng6/quant_mcp
+   e67ab4e..e1015ce  final      -> origin/final
+Updating e67ab4e..e1015ce
+Fast-forward
+ README_EC2_DEPLOY.md | 268 -----------------------------
+ README_TRANSPORT.md  | 122 --------------
+ deploy_start.sh      | 306 ++++++++++++++++++++++------------
+ 3 files changed, 200 insertions(+), 496 deletions(-)
+ delete mode 100644 README_EC2_DEPLOY.md
+ delete mode 100644 README_TRANSPORT.md
+sudo systemctl restart mcp
+
+sudo systemctl status mcp
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled;>
+     Active: active (running) since Wed 2025-05-28 07:58:14 UT>
+   Main PID: 5209 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 66.8M (peak: 67.1M)
+        CPU: 840ms
+     CGroup: /system.slice/mcp.service
+             └─5209 /home/ubuntu/quant_mcp/.venv/bin/python se>
+
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册交易策略提 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册市场分析提 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册技术分析提 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册基本面分析 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册投资组合管 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册回测分析提 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Start>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Waiti>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Appli>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Uvico>
+
+sudo ufw status
+   sudo ufw allow 8081
+   sudo ufw allow 8000
+Status: inactive
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+sudo nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+sudo nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+ls
+README.md       deploy_start.sh       scripts    utils
+check_types.py  mcp_html_server.conf  server.py
+data            requirements.txt      src
+sudo ./deploy_start.sh -d
+开始部署MCP服务器...
+检测操作系统...
+操作系统: Linux
+检查系统依赖项...
+所有依赖项已安装!
+安装系统依赖...
+Hit:1 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble InRelease
+Hit:2 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:3 http://us-east-1.ec2.archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Reading package lists... Done                          
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+python3 is already the newest version (3.12.3-0ubuntu2).
+python3-pip is already the newest version (24.0+dfsg-1ubuntu1.1).
+python3-venv is already the newest version (3.12.3-0ubuntu2).
+0 upgraded, 0 newly installed, 0 to remove and 87 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+nginx is already the newest version (1.24.0-2ubuntu7.3).
+0 upgraded, 0 newly installed, 0 to remove and 87 not upgraded.
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+curl is already the newest version (8.5.0-2ubuntu10.6).
+git is already the newest version (1:2.43.0-1ubuntu7.2).
+0 upgraded, 0 newly installed, 0 to remove and 87 not upgraded.
+系统依赖安装完成!
+设置Python虚拟环境...
+虚拟环境已存在!
+激活虚拟环境...
+安装依赖...
+Requirement already satisfied: mcp>=0.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 2)) (1.9.1)
+Requirement already satisfied: pandas>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 3)) (2.2.3)
+Requirement already satisfied: requests>=2.28.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 4)) (2.32.3)
+Requirement already satisfied: jinja2>=3.1.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 5)) (3.1.6)
+Requirement already satisfied: numpy>=1.24.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 6)) (2.2.6)
+Requirement already satisfied: paho-mqtt>=2.0.0 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 7)) (2.1.0)
+Requirement already satisfied: pysocks>=1.7.1 in ./.venv/lib/python3.12/site-packages (from -r requirements.txt (line 8)) (1.7.1)
+Requirement already satisfied: anyio>=4.5 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (4.9.0)
+Requirement already satisfied: httpx-sse>=0.4 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.0)
+Requirement already satisfied: httpx>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.28.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.9.1)
+Requirement already satisfied: pydantic<3.0.0,>=2.7.2 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.11.5)
+Requirement already satisfied: python-multipart>=0.0.9 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.0.20)
+Requirement already satisfied: sse-starlette>=1.6.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (2.3.5)
+Requirement already satisfied: starlette>=0.27 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.46.2)
+Requirement already satisfied: uvicorn>=0.23.1 in ./.venv/lib/python3.12/site-packages (from mcp>=0.1.0->-r requirements.txt (line 2)) (0.34.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv/lib/python3.12/site-packages (from pandas>=2.0.0->-r requirements.txt (line 3)) (2025.2)
+Requirement already satisfied: charset-normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.4.2)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2.4.0)
+Requirement already satisfied: certifi>=2017.4.17 in ./.venv/lib/python3.12/site-packages (from requests>=2.28.0->-r requirements.txt (line 4)) (2025.4.26)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv/lib/python3.12/site-packages (from jinja2>=3.1.0->-r requirements.txt (line 5)) (3.0.2)
+Requirement already satisfied: sniffio>=1.1 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (1.3.1)
+Requirement already satisfied: typing_extensions>=4.5 in ./.venv/lib/python3.12/site-packages (from anyio>=4.5->mcp>=0.1.0->-r requirements.txt (line 2)) (4.13.2)
+Requirement already satisfied: httpcore==1.* in ./.venv/lib/python3.12/site-packages (from httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv/lib/python3.12/site-packages (from httpcore==1.*->httpx>=0.27->mcp>=0.1.0->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in ./.venv/lib/python3.12/site-packages (from pydantic<3.0.0,>=2.7.2->mcp>=0.1.0->-r requirements.txt (line 2)) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in ./.venv/lib/python3.12/site-packages (from pydantic-settings>=2.5.2->mcp>=0.1.0->-r requirements.txt (line 2)) (1.1.0)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=2.0.0->-r requirements.txt (line 3)) (1.17.0)
+Requirement already satisfied: click>=7.0 in ./.venv/lib/python3.12/site-packages (from uvicorn>=0.23.1->mcp>=0.1.0->-r requirements.txt (line 2)) (8.2.1)
+Python环境设置完成!
+修补server.py文件，确保服务绑定到所有网络接口...
+server.py文件修补成功!
+配置HTML服务器...
+已更新HTML服务器配置文件
+HTML服务器配置文件已更新
+配置Nginx (改进版)...
+停止现有Nginx服务...
+测试Nginx配置...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+启动Nginx服务...
+Nginx配置已更新并启动
+Nginx配置完成!
+创建systemd服务...
+systemd服务创建完成!
+启动MCP服务...
+MCP服务状态:
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2025-05-28 07:58:14 UTC; 3min 10s ago
+   Main PID: 5209 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 67.2M (peak: 67.4M)
+        CPU: 1.109s
+     CGroup: /system.slice/mcp.service
+             └─5209 /home/ubuntu/quant_mcp/.venv/bin/python se…
+
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册回测分析…板
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Star…]
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Wait….
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Appl….
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Uvic…)
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 测试HTML文件…tml
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 检测到Nginx已…问
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 启动量化交易…议
+May 28 07:58:42 ip-172-31-86-225 python[5209]: SSE服务器将在…行
+May 28 07:58:42 ip-172-31-86-225 python[5209]: INFO:     127.…K
+Hint: Some lines were ellipsized, use -l to show in full.
+生成测试HTML文件...
+测试HTML文件URL: http://172.31.86.225:8081/charts/test.html
+尝试使用curl访问测试HTML文件...
+HTTP/1.1 403 Forbidden
+测试HTML文件可以成功访问!
+启动MCP服务器，使用sse传输协议
+MCP服务器已通过systemd启动
+获取服务信息...
+部署和启动完成!
+MCP服务器地址: http://172.31.86.225:8000
+MCP服务器SSE端点: http://172.31.86.225:8000/sse
+HTML服务器地址: http://172.31.86.225:8081
+测试HTML页面: http://172.31.86.225:8081/charts/test.html
+检查端口监听状态...
+MCP服务器端口 (8000) 监听状态:
+sudo: netstat: command not found
+端口 8000 未在监听!
+HTML服务器端口 (8081) 监听状态:
+sudo: netstat: command not found
+端口 8081 未在监听!
+配置防火墙规则...
+Rules updated
+Rules updated (v6)
+Rules updated
+Rules updated (v6)
+sudo netstat -tulnp
+sudo: netstat: command not found
+sudo ss -tulnp
+Netid   State    Recv-Q   Send-Q          Local Address:Port                          Peer Address:Port                       Process                                                        
+udp     UNCONN   0        0                  127.0.0.54:53                                 0.0.0.0:*                           users:(("systemd-resolve",pid=304,fd=16))                     
+udp     UNCONN   0        0               127.0.0.53%lo:53                                 0.0.0.0:*                           users:(("systemd-resolve",pid=304,fd=14))                     
+udp     UNCONN   0        0          172.31.86.225%enX0:68                                 0.0.0.0:*                           users:(("systemd-network",pid=515,fd=21))                     
+udp     UNCONN   0        0                   127.0.0.1:323                                0.0.0.0:*                           users:(("chronyd",pid=774,fd=5))                              
+udp     UNCONN   0        0                       [::1]:323                                   [::]:*                           users:(("chronyd",pid=774,fd=6))                              
+tcp     LISTEN   0        511                   0.0.0.0:80                                 0.0.0.0:*                           users:(("nginx",pid=7400,fd=6),("nginx",pid=7398,fd=6))       
+tcp     LISTEN   0        2048                127.0.0.1:8000                               0.0.0.0:*                           users:(("python",pid=5209,fd=3))                              
+tcp     LISTEN   0        511                   0.0.0.0:8081                               0.0.0.0:*                           users:(("nginx",pid=7400,fd=5),("nginx",pid=7398,fd=5))       
+tcp     LISTEN   0        4096            127.0.0.53%lo:53                                 0.0.0.0:*                           users:(("systemd-resolve",pid=304,fd=15))                     
+tcp     LISTEN   0        4096               127.0.0.54:53                                 0.0.0.0:*                           users:(("systemd-resolve",pid=304,fd=17))                     
+tcp     LISTEN   0        511                      [::]:80                                    [::]:*                           users:(("nginx",pid=7400,fd=7),("nginx",pid=7398,fd=7))       
+tcp     LISTEN   0        4096                        *:22                                       *:*                           users:(("sshd",pid=1078,fd=3),("systemd",pid=1,fd=165))       
+systemctl status mcp
+● mcp.service - MCP Server
+     Loaded: loaded (/etc/systemd/system/mcp.service; enabled;>
+     Active: active (running) since Wed 2025-05-28 07:58:14 UT>
+   Main PID: 5209 (python)
+      Tasks: 1 (limit: 1129)
+     Memory: 67.2M (peak: 67.4M)
+        CPU: 1.362s
+     CGroup: /system.slice/mcp.service
+             └─5209 /home/ubuntu/quant_mcp/.venv/bin/python se>
+
+May 28 07:58:15 ip-172-31-86-225 python[5209]: 注册回测分析提 >
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Start>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Waiti>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Appli>
+May 28 07:58:15 ip-172-31-86-225 python[5209]: INFO:     Uvico>
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 测试HTML文件已 >
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 检测到Nginx已安>
+May 28 07:58:42 ip-172-31-86-225 python[5209]: 启动量化交易助 >
+May 28 07:58:42 ip-172-31-86-225 python[5209]: SSE服务器将在 h>
+May 28 07:58:42 ip-172-31-86-225 python[5209]: INFO:     127.0>
+
+curl -I http://localhost:8081/charts/test.html
+HTTP/1.1 403 Forbidden
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 28 May 2025 08:05:11 GMT
+Content-Type: text/html
+Content-Length: 162
+Connection: keep-alive
+
+curl http://localhost:8081/charts/test.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP测试页面</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>MCP测试页面</h1>
+    <p>这是一个测试页面，如果您能看到此内容，说明HTML服务器配置正确。</p>
+    <p>当前时间: <span id="time"></span></p>
+    <script>document.getElementById("time").textContent = new Date().toLocaleString();</script>
+</body>
+</html>
+ls
+README.md       deploy_start.sh       scripts        src
+check_types.py  mcp_html_server.conf  server.py      utils
+data            requirements.txt      server.py.bak
+ls data
+backtest  config  logs  templates
+charts    klines  temp  帮助文档
+ls data/charts/
+test.html
+
+分析,这里做了什么让8081端口可以ping通?
+简要回答

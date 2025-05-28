@@ -32,7 +32,7 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
         FastMCP: MCP服务器实例
     """
     # 创建FastMCP服务器实例
-    mcp = FastMCP(name)
+    mcp = FastMCP(name, host="0.0.0.0")
 
     # 注册所有MCP组件
     register_all_tools(mcp)      # 注册工具
@@ -85,12 +85,6 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         except Exception as e:
             logger.error(f"生成测试HTML文件时发生错误: {e}")
             print(f"错误: 生成测试HTML文件时发生错误: {e}", file=sys.stderr)
-
-        # 确保host是0.0.0.0以允许外部访问
-        if host != '0.0.0.0':
-            logger.warning(f"主机地址已从 {host} 更改为 0.0.0.0 以允许外部访问")
-            print(f"警告: 主机地址已从 {host} 更改为 0.0.0.0 以允许外部访问", file=sys.stderr)
-            host = '0.0.0.0'
 
         # 创建服务器
         mcp = create_server()

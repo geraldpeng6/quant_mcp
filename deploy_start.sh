@@ -395,6 +395,12 @@ server {
 
         # 禁止目录列表
         autoindex off;
+        
+        # 文件权限
+        client_body_temp_path /tmp;
+        client_max_body_size 10m;
+        # 确保nginx有足够权限
+        dav_access user:rw group:rw all:r;
     }
 
     # MCP服务器代理 - 代理SSE请求到MCP服务器
@@ -494,6 +500,7 @@ WorkingDirectory=$CURRENT_DIR
 Environment=MCP_ENV=production
 Environment=MCP_SSE_HOST=0.0.0.0
 Environment=MCP_SSE_PORT=$PORT
+Environment=FASTMCP_HOST=0.0.0.0
 ExecStart=$CURRENT_DIR/.venv/bin/python server.py --transport $TRANSPORT --host 0.0.0.0 --port $PORT
 Restart=always
 RestartSec=5s
@@ -554,7 +561,15 @@ EOF
     
     # 如果是Linux，设置www-data权限
     if [ "$MACHINE" = "Linux" ]; then
-        sudo chown -R www-data:www-data data/charts || true
+        # 递归设置目录权限
+        sudo chmod -R 755 data/charts
+        # 递归设置文件权限
+        find data/charts -type f -exec sudo chmod 644 {} \;
+        # 设置目录所有者
+        sudo chown -R www-data:www-data data/charts || echo "警告: 无法更改所有者，请手动执行: sudo chown -R www-data:www-data $(pwd)/data/charts"
+        # 确保nginx用户可以访问整个路径
+        sudo chmod 755 $(pwd)
+        sudo chmod 755 $(pwd)/data
     fi
     
     # 尝试获取服务器主机地址
