@@ -1,7 +1,7 @@
 {
-    "server_host": "123.45.67.89",
+    "server_host": null,
     "server_port": 8081,
     "charts_dir": "data/charts",
-    "use_ec2_metadata": false,
-    "use_public_ip": false
+    "use_ec2_metadata": true,
+    "use_public_ip": true
 }
