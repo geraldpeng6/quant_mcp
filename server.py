@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -11,6 +11,7 @@ import logging
 import os
 import inspect
 import json
+import socket
 from typing import Dict, Any, Optional, List, Tuple
 from mcp.server.fastmcp import FastMCP
 from mcp.server.middleware import Middleware
@@ -27,6 +28,26 @@ configure_root_logger()
 
 # 设置应用日志
 logger = setup_logging('quant_mcp.server')
+
+# 获取本机IP地址，确保服务器可以被外部访问
+def get_local_ip():
+    try:
+        # 创建一个UDP套接字
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # 连接到一个外部服务器（不需要实际发送数据）
+        s.connect(("8.8.8.8", 80))
+        # 获取分配的IP地址
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception as e:
+        log_exception(logger, f"获取本机IP地址失败")
+        return "0.0.0.0"  # 默认监听所有网络接口
+
+# 设置本机IP到环境变量
+local_ip = get_local_ip()
+os.environ['MCP_LOCAL_IP'] = local_ip
+logger.info(f"本机IP地址: {local_ip}")
 
 class AuthMiddleware(Middleware):
     """认证中间件，从MCP客户端配置中提取认证信息"""
@@ -140,7 +161,7 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
         FastMCP: MCP服务器实例
     """
     try:
-        # 创建FastMCP服务器实例
+        # 创建FastMCP服务器实例，确保绑定到所有网络接口
         mcp = FastMCP(name, host="0.0.0.0")
         
         # 注册中间件
@@ -217,8 +238,10 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         if transport == 'stdio':
             mcp.run(transport=transport)
         elif transport == 'sse':
-            print(f"SSE服务器将在 http://{host}:{port}/sse 上运行")
-            logger.info(f"SSE服务器将在 http://{host}:{port}/sse 上运行")
+            # 确保使用本机IP或0.0.0.0绑定
+            bind_host = "0.0.0.0"  # 始终绑定到所有网络接口
+            print(f"SSE服务器将在 http://{local_ip}:{port}/sse 上运行 (绑定到 {bind_host})")
+            logger.info(f"SSE服务器将在 http://{local_ip}:{port}/sse 上运行 (绑定到 {bind_host})")
 
             # 强制设置环境变量确保监听在0.0.0.0
             os.environ['MCP_SSE_HOST'] = '0.0.0.0'
@@ -235,8 +258,10 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
                 mcp.run(transport=transport)
 
         elif transport == 'streamable-http':
-            print(f"Streamable HTTP服务器将在 http://{host}:{port}/mcp 上运行")
-            logger.info(f"Streamable HTTP服务器将在 http://{host}:{port}/mcp 上运行")
+            # 确保使用本机IP或0.0.0.0绑定
+            bind_host = "0.0.0.0"  # 始终绑定到所有网络接口
+            print(f"Streamable HTTP服务器将在 http://{local_ip}:{port}/mcp 上运行 (绑定到 {bind_host})")
+            logger.info(f"Streamable HTTP服务器将在 http://{local_ip}:{port}/mcp 上运行 (绑定到 {bind_host})")
 
             # 强制设置环境变量确保监听在0.0.0.0
             os.environ['MCP_HTTP_HOST'] = '0.0.0.0'

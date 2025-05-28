@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -14,6 +14,7 @@ import socket
 import requests
 import subprocess
 import json
+import platform
 from typing import Optional, Tuple, Dict, Any
 
 from utils.logging_utils import setup_logging, log_exception
@@ -85,6 +86,67 @@ def get_ec2_metadata() -> Optional[str]:
     return None
 
 
+def get_local_ip() -> str:
+    """
+    获取本机IP地址
+
+    返回本机的IP地址，如果获取失败则返回localhost
+
+    Returns:
+        str: 本机IP地址
+    """
+    # 首先检查是否已有环境变量中设置的IP
+    if 'MCP_LOCAL_IP' in os.environ and os.environ['MCP_LOCAL_IP']:
+        ip = os.environ['MCP_LOCAL_IP']
+        logger.info(f"从环境变量获取本机IP: {ip}")
+        return ip
+    
+    try:
+        # 尝试获取一个可用的IP地址
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        logger.info(f"获取到本机IP: {ip}")
+        return ip
+    except Exception as e:
+        log_exception(logger, f"获取本机IP地址失败")
+        
+        # 尝试获取所有非回环IP地址
+        try:
+            hostname = socket.gethostname()
+            ip_list = socket.gethostbyname_ex(hostname)[2]
+            for ip in ip_list:
+                if not ip.startswith("127."):
+                    logger.info(f"获取到本机IP: {ip}")
+                    return ip
+        except Exception as e:
+            log_exception(logger, f"获取主机名IP地址失败")
+        
+        # 如果仍然失败，尝试使用ifconfig或ipconfig
+        system = platform.system()
+        try:
+            if system == "Darwin" or system == "Linux":  # macOS or Linux
+                cmd = "ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1"
+                ip = subprocess.check_output(cmd, shell=True).decode().strip()
+                if ip:
+                    logger.info(f"通过ifconfig获取到本机IP: {ip}")
+                    return ip
+            elif system == "Windows":
+                cmd = "ipconfig | findstr /i \"IPv4\" | findstr /v \"127.0.0.1\" | findstr /v \"IPv4\" | findstr /v \"::\" | more +2"
+                output = subprocess.check_output(cmd, shell=True).decode()
+                ip = output.strip().split(":")[-1].strip()
+                if ip:
+                    logger.info(f"通过ipconfig获取到本机IP: {ip}")
+                    return ip
+        except Exception as e:
+            log_exception(logger, f"通过系统命令获取IP地址失败")
+    
+    # 如果所有方法都失败，使用环境变量或默认值
+    logger.warning("无法获取本机IP，使用localhost")
+    return "localhost"
+
+
 def get_server_host() -> str:
     """
     获取服务器主机地址
@@ -127,7 +189,9 @@ def get_server_host() -> str:
         
         # EC2元数据服务
         if config.get('use_ec2_metadata', True):
-            ip_services.insert(0, 'http://169.254.169.254/latest/meta-data/public-ipv4')
+            ec2_ip = get_ec2_metadata()
+            if ec2_ip:
+                return ec2_ip
         
         # 尝试每个服务
         for service in ip_services:
@@ -142,51 +206,9 @@ def get_server_host() -> str:
                 continue
 
     # 4. 尝试获取本地IP
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # 使用多个DNS服务器尝试连接
-        dns_servers = ["8.8.8.8", "1.1.1.1", "114.114.114.114", "208.67.222.222"]
-        
-        for dns in dns_servers:
-            try:
-                s.connect((dns, 53))
-                local_ip = s.getsockname()[0]
-                s.close()
-                logger.info(f"获取到本地IP: {local_ip}")
-                return local_ip
-            except:
-                continue
-        
-        # 如果所有DNS服务器都失败，尝试一个备用方法
-        import subprocess
-        
-        # 获取操作系统类型
-        import platform
-        system = platform.system()
-        
-        if system == "Darwin" or system == "Linux":  # macOS or Linux
-            try:
-                # 使用ifconfig命令
-                cmd = "ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1"
-                local_ip = subprocess.check_output(cmd, shell=True).decode().strip()
-                if local_ip:
-                    logger.info(f"通过ifconfig获取到本地IP: {local_ip}")
-                    return local_ip
-            except:
-                pass
-        elif system == "Windows":
-            try:
-                # 使用ipconfig命令
-                cmd = "ipconfig | findstr /i \"IPv4\" | findstr /v \"127.0.0.1\" | findstr /v \"IPv4\" | findstr /v \"::\" | more +2"
-                output = subprocess.check_output(cmd, shell=True).decode()
-                local_ip = output.strip().split(":")[-1].strip()
-                if local_ip:
-                    logger.info(f"通过ipconfig获取到本地IP: {local_ip}")
-                    return local_ip
-            except:
-                pass
-    except Exception as e:
-        logger.warning(f"获取本地IP失败: {e}")
+    local_ip = get_local_ip()
+    if local_ip != "localhost":
+        return local_ip
 
     # 5. 如果以上都失败，返回localhost
     logger.info("无法获取服务器IP，使用localhost")
@@ -211,6 +233,14 @@ def get_html_url(file_path: str) -> str:
     # 如果主机地址未初始化，则获取
     if DEFAULT_SERVER_HOST is None:
         DEFAULT_SERVER_HOST = get_server_host()
+        # 如果仍然没有获取到有效的主机地址，尝试获取本地IP
+        if not DEFAULT_SERVER_HOST or DEFAULT_SERVER_HOST == "":
+            DEFAULT_SERVER_HOST = get_local_ip()
+            
+    # 确保主机地址不为空
+    if not DEFAULT_SERVER_HOST or DEFAULT_SERVER_HOST == "":
+        DEFAULT_SERVER_HOST = "localhost"
+        logger.warning("使用localhost作为服务器主机地址")
 
     # 获取服务器端口
     server_port = config.get('server_port', DEFAULT_SERVER_PORT)
@@ -322,7 +352,6 @@ def setup_nginx() -> Tuple[bool, str]:
             return False, nginx_config
 
         # 检测操作系统和环境
-        import platform
         system = platform.system()
 
         # 检查是否是EC2环境
