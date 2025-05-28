@@ -404,12 +404,6 @@ server {
 
         # 禁止目录列表
         autoindex off;
-        
-        # 文件权限
-        client_body_temp_path /tmp;
-        client_max_body_size 10m;
-        # 确保nginx有足够权限
-        dav_access user:rw group:rw all:r;
     }
 
     # MCP服务器代理 - 代理SSE请求到MCP服务器
@@ -444,21 +438,35 @@ EOF
         sudo cp "$TEMP_CONF_FILE" "$NGINX_CONF_DIR/mcp_html_server.conf"
         rm "$TEMP_CONF_FILE"
         
-        # 确保charts目录存在并具有正确的权限
+        # 确保charts目录存在
         mkdir -p data/charts
-        # 递归设置目录权限
-        sudo chmod -R 755 data/charts
-        # 递归设置文件权限
-        find data/charts -type f -exec sudo chmod 644 {} \;
-        # 设置目录所有者为nginx或www-data
+        
+        # 设置关键权限 - 这是最重要的部分
+        echo -e "${YELLOW}设置charts目录关键权限...${NC}"
+        
+        # 为Nginx用户设置正确的所有者(最关键的部分)
         if getent passwd www-data >/dev/null 2>&1; then
-            sudo chown -R www-data:www-data data/charts || true
+            sudo chown -R www-data:www-data data/charts
+            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
         elif getent passwd nginx >/dev/null 2>&1; then
-            sudo chown -R nginx:nginx data/charts || true
+            sudo chown -R nginx:nginx data/charts
+            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
+        else
+            echo -e "${YELLOW}警告: 未找到www-data或nginx用户，尝试使用当前用户${NC}"
         fi
-        # 确保目录路径也可访问
-        sudo chmod 755 $(pwd)
-        sudo chmod 755 $(pwd)/data
+        
+        # 设置目录权限
+        sudo chmod -R 755 data/charts
+        sudo find data/charts -type f -exec sudo chmod 644 {} \;
+        
+        # 确保整个路径都可被访问
+        echo -e "${YELLOW}确保完整路径权限...${NC}"
+        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
+            if [ -d "$DIR" ]; then
+                sudo chmod 755 "$DIR"
+                echo -e "${GREEN}已设置目录权限: $DIR${NC}"
+            fi
+        done
         
         # 测试配置
         echo -e "${YELLOW}测试Nginx配置...${NC}"
@@ -759,69 +767,13 @@ except Exception as e:
         return 0
     fi
     
-    echo -e "${YELLOW}HTML文件访问问题 (HTTP $HTTP_STATUS), 尝试修复...${NC}"
+    echo -e "${YELLOW}HTML文件访问问题 (HTTP $HTTP_STATUS), 开始修复...${NC}"
     
-    # 问题1: 检查Nginx配置
-    echo -e "${YELLOW}检查Nginx配置...${NC}"
+    # 直接应用权限修复 - 这是解决问题的关键
     if [ "$MACHINE" = "Linux" ]; then
-        CONFIG_FILE="/etc/nginx/conf.d/mcp_html_server.conf"
-        if [ -f "$CONFIG_FILE" ]; then
-            echo -e "${GREEN}Nginx配置文件存在: $CONFIG_FILE${NC}"
-            
-            # 检查配置
-            if grep -q "location /charts/" "$CONFIG_FILE"; then
-                echo -e "${GREEN}Nginx配置中包含/charts/路径${NC}"
-            else
-                echo -e "${RED}Nginx配置中缺少/charts/路径，重新配置Nginx${NC}"
-                setup_nginx_improved
-            fi
-        else
-            echo -e "${RED}未找到Nginx配置文件，重新配置Nginx${NC}"
-            setup_nginx_improved
-        fi
+        echo -e "${YELLOW}应用关键权限修复...${NC}"
         
-        # 检查Nginx是否运行
-        if systemctl is-active --quiet nginx; then
-            echo -e "${GREEN}Nginx正在运行${NC}"
-        else
-            echo -e "${RED}Nginx未运行，尝试启动${NC}"
-            sudo systemctl start nginx || sudo service nginx start || sudo nginx
-        fi
-    elif [ "$MACHINE" = "Mac" ]; then
-        CONFIG_FILE="/opt/homebrew/etc/nginx/servers/mcp_html_server.conf"
-        if [ -f "$CONFIG_FILE" ]; then
-            echo -e "${GREEN}Nginx配置文件存在: $CONFIG_FILE${NC}"
-            
-            # 检查配置
-            if grep -q "location /charts/" "$CONFIG_FILE"; then
-                echo -e "${GREEN}Nginx配置中包含/charts/路径${NC}"
-            else
-                echo -e "${RED}Nginx配置中缺少/charts/路径，重新配置Nginx${NC}"
-                setup_nginx_improved
-            fi
-        else
-            echo -e "${RED}未找到Nginx配置文件，重新配置Nginx${NC}"
-            setup_nginx_improved
-        fi
-        
-        # 检查Nginx是否运行
-        if pgrep -x "nginx" > /dev/null; then
-            echo -e "${GREEN}Nginx正在运行${NC}"
-        else
-            echo -e "${RED}Nginx未运行，尝试启动${NC}"
-            brew services start nginx || nginx
-        fi
-    fi
-    
-    # 问题2: 检查文件权限
-    echo -e "${YELLOW}检查文件权限...${NC}"
-    if [ "$MACHINE" = "Linux" ]; then
-        sudo chmod -R 755 data/charts
-        find data/charts -type f -exec sudo chmod 644 {} \;
-        sudo chmod 755 $(pwd)
-        sudo chmod 755 $(pwd)/data
-        
-        # 检查并修复所有者
+        # 1. 修复文件所有者 (最关键的部分)
         if getent passwd www-data >/dev/null 2>&1; then
             sudo chown -R www-data:www-data data/charts
             echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
@@ -829,14 +781,27 @@ except Exception as e:
             sudo chown -R nginx:nginx data/charts
             echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
         fi
+        
+        # 2. 修复文件权限
+        sudo chmod -R 755 data/charts
+        sudo find data/charts -type f -exec sudo chmod 644 {} \;
+        
+        # 3. 确保整个路径权限正确
+        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
+            if [ -d "$DIR" ]; then
+                sudo chmod 755 "$DIR"
+            fi
+        done
+        
+        # 4. 重启Nginx
+        echo -e "${YELLOW}重启Nginx...${NC}"
+        sudo systemctl restart nginx || sudo service nginx restart || sudo nginx -s reload
     elif [ "$MACHINE" = "Mac" ]; then
+        # MacOS权限修复
         chmod -R 755 data/charts
         find data/charts -type f -exec chmod 644 {} \;
+        brew services restart nginx
     fi
-    
-    # 问题3: 重新生成测试文件
-    echo -e "${YELLOW}重新生成测试文件...${NC}"
-    generate_test_html
     
     # 重新测试访问
     echo -e "${YELLOW}再次尝试访问测试HTML文件...${NC}"
@@ -846,10 +811,13 @@ except Exception as e:
         echo -e "${GREEN}修复成功! HTML文件现在可以访问 (HTTP 200)${NC}"
     else
         echo -e "${RED}修复后仍然无法访问HTML文件 (HTTP $HTTP_STATUS)${NC}"
-        echo -e "${YELLOW}请尝试手动检查以下方面:${NC}"
-        echo -e "1. Nginx日志: /var/log/nginx/error.log"
-        echo -e "2. 确认防火墙允许端口$HTML_PORT"
-        echo -e "3. 确认charts目录路径正确: $CHARTS_DIR"
+        echo -e "${YELLOW}请检查Nginx日志:${NC}"
+        if [ "$MACHINE" = "Linux" ]; then
+            echo -e "$ sudo tail -f /var/log/nginx/error.log"
+            sudo tail -n 10 /var/log/nginx/error.log 2>/dev/null || echo "无法读取Nginx日志"
+        elif [ "$MACHINE" = "Mac" ]; then
+            echo -e "$ tail -f /opt/homebrew/var/log/nginx/error.log"
+        fi
     fi
     
     return 0
@@ -937,19 +905,14 @@ redeploy() {
         HOST="0.0.0.0"
     fi
     
-    # 添加专门针对HTML文件访问的修复
-    echo -e "${YELLOW}应用HTML文件访问问题修复...${NC}"
+    # 关键步骤：应用权限修复
+    echo -e "${YELLOW}应用HTML文件访问权限修复...${NC}"
     
-    # 确保charts目录存在并有正确权限
-    mkdir -p data/charts
-    
-    # 在Linux系统上设置正确的文件权限
     if [ "$MACHINE" = "Linux" ]; then
-        # 递归设置目录权限
-        sudo chmod -R 755 data/charts
-        # 递归设置文件权限
-        find data/charts -type f -exec sudo chmod 644 {} \;
-        # 设置目录所有者为nginx或www-data
+        # 确保charts目录存在
+        mkdir -p data/charts
+        
+        # 设置文件所有者为www-data或nginx (最关键的部分)
         if getent passwd www-data >/dev/null 2>&1; then
             sudo chown -R www-data:www-data data/charts
             echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
@@ -957,9 +920,18 @@ redeploy() {
             sudo chown -R nginx:nginx data/charts
             echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
         fi
-        # 确保目录路径也可访问
-        sudo chmod 755 $(pwd)
-        sudo chmod 755 $(pwd)/data
+        
+        # 设置目录和文件权限
+        sudo chmod -R 755 data/charts
+        sudo find data/charts -type f -exec sudo chmod 644 {} \;
+        
+        # 确保整个路径可访问
+        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
+            if [ -d "$DIR" ]; then
+                sudo chmod 755 "$DIR"
+                echo -e "${GREEN}已设置目录权限: $DIR${NC}"
+            fi
+        done
     elif [ "$MACHINE" = "Mac" ]; then
         chmod -R 755 data/charts
         find data/charts -type f -exec chmod 644 {} \;
@@ -981,12 +953,10 @@ redeploy() {
     echo -e "1. 测试HTML页面应该可以通过以下URL访问:"
     echo -e "   http://服务器IP:$HTML_PORT/charts/test.html"
     echo -e "2. 如果无法访问，可尝试以下操作:"
-    echo -e "   - 检查防火墙是否允许端口$HTML_PORT"
     echo -e "   - 重启Nginx: sudo systemctl restart nginx"
-    echo -e "   - 检查日志: sudo tail -f /var/log/nginx/error.log"
-    echo -e "   - 运行诊断: $0 --redeploy (将自动运行诊断流程)"
+    echo -e "   - 检查权限: sudo chown -R www-data:www-data $(pwd)/data/charts"
+    echo -e "   - 查看日志: sudo tail -f /var/log/nginx/error.log"
     echo -e "3. charts目录位于: $(pwd)/data/charts"
-    echo -e "   将HTML文件放入此目录即可通过 http://服务器IP:$HTML_PORT/charts/文件名.html 访问"
 }
 
 # 添加端口检查函数，在脚本结尾调用
@@ -1051,7 +1021,10 @@ main() {
     # 配置HTML服务器
     setup_html_server
     
-    # 配置Nginx - 使用改进版函数
+    # 生成测试HTML文件
+    generate_test_html
+    
+    # 配置Nginx - 改进版配置，包括关键的权限设置
     setup_nginx_improved
     
     # 设置服务器绑定地址
@@ -1064,12 +1037,6 @@ main() {
     # 创建systemd服务（仅在Linux部署模式下）
     create_systemd_service
     
-    # 生成测试HTML文件
-    generate_test_html
-    
-    # 改进版Nginx配置
-    setup_nginx_improved
-    
     # 诊断和修复HTML文件访问问题
     diagnose_html_access
     
@@ -1081,6 +1048,9 @@ main() {
     
     # 检查端口监听状态
     check_ports
+    
+    echo -e "\n${YELLOW}部署完成。如果需要随时修复HTML文件访问问题，可以运行:${NC}"
+    echo -e "${GREEN}sudo $(pwd)/deploy_start.sh --redeploy${NC}"
 }
 
 # 执行主函数
