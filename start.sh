@@ -5,9 +5,10 @@
 
 # 默认参数
 TRANSPORT="sse"  # 默认使用SSE传输协议
-HOST="0.0.0.0"
+HOST="0.0.0.0"   # 默认绑定所有地址，不仅仅是localhost
 PORT=8000
 HTML_PORT=8081   # HTML服务器端口
+FORCE_KILL=false # 是否强制杀掉占用端口的进程
 
 # 颜色定义
 GREEN='\033[0;32m'
@@ -24,12 +25,14 @@ show_help() {
     echo "  -H, --host HOST           指定主机地址 (默认: 0.0.0.0)"
     echo "  -p, --port PORT           指定端口号 (默认: 8000)"
     echo "  --html-port PORT          指定HTML服务器端口号 (默认: 8081)"
+    echo "  --kill                    强制杀掉占用指定端口的进程"
     echo ""
     echo "示例:"
     echo "  $0                        # 使用默认设置启动 (SSE, 0.0.0.0:8000)"
     echo "  $0 -t stdio               # 使用STDIO传输协议启动"
     echo "  $0 -t streamable-http     # 使用Streamable HTTP传输协议启动"
     echo "  $0 -H 127.0.0.1 -p 9000   # 在127.0.0.1:9000上启动"
+    echo "  $0 -p 8888 --kill         # 杀掉占用8888端口的进程并在该端口启动"
     exit 0
 }
 
@@ -55,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             HTML_PORT="$2"
             shift 2
             ;;
+        --kill)
+            FORCE_KILL=true
+            shift 1
+            ;;
         *)
             echo -e "${RED}错误: 未知选项 $1${NC}"
             show_help
@@ -74,6 +81,73 @@ if [ ! -f "server.py" ]; then
     echo -e "${RED}错误: 请在项目根目录运行此脚本${NC}"
     exit 1
 fi
+
+# 检查端口是否已被占用并处理
+check_port() {
+    local port=$1
+    local force_kill=$2
+    local pid
+
+    echo -e "${YELLOW}检查端口 $port 是否可用...${NC}"
+    
+    # 使用ss命令或lsof查找占用端口的进程
+    if command -v ss &> /dev/null; then
+        pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+    elif command -v lsof &> /dev/null; then
+        pid=$(lsof -ti:$port)
+    else
+        echo -e "${YELLOW}警告: 无法检查端口占用，未找到ss或lsof命令${NC}"
+        return
+    fi
+    
+    if [ -n "$pid" ]; then
+        if [ "$force_kill" = true ]; then
+            echo -e "${YELLOW}端口 $port 被进程 $pid 占用，尝试终止...${NC}"
+            
+            # 尝试正常终止
+            kill $pid 2>/dev/null
+            sleep 2
+            
+            # 检查进程是否仍在运行
+            if ps -p $pid > /dev/null; then
+                echo -e "${YELLOW}进程未响应正常终止信号，尝试强制终止...${NC}"
+                kill -9 $pid 2>/dev/null
+                sleep 1
+            fi
+            
+            # 再次检查端口
+            if command -v ss &> /dev/null; then
+                pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+            elif command -v lsof &> /dev/null; then
+                pid=$(lsof -ti:$port)
+            fi
+            
+            if [ -n "$pid" ]; then
+                echo -e "${RED}错误: 无法释放端口 $port，仍被进程 $pid 占用${NC}"
+                
+                # 尝试查看进程信息
+                echo -e "${YELLOW}尝试获取进程信息:${NC}"
+                ps -f -p $pid
+                
+                # 如果是systemd服务，尝试识别
+                if command -v systemctl &> /dev/null; then
+                    echo -e "${YELLOW}检查是否是systemd服务:${NC}"
+                    systemctl status | grep $pid
+                fi
+                
+                exit 1
+            else
+                echo -e "${GREEN}成功释放端口 $port${NC}"
+            fi
+        else
+            echo -e "${RED}错误: 端口 $port 已被进程 $pid 占用${NC}"
+            echo -e "${YELLOW}提示: 使用 '$0 --kill' 选项来终止占用进程，或使用 '-p' 选项指定其他端口${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}端口 $port 可用${NC}"
+    fi
+}
 
 # 获取公网IP - 直接在脚本中实现，不依赖配置文件
 get_public_ip() {
@@ -288,6 +362,9 @@ setup_nginx() {
         return
     fi
 
+    # 检查HTML端口是否被占用
+    check_port $HTML_PORT $FORCE_KILL
+
     # 获取charts目录的绝对路径
     CHARTS_DIR=$(pwd)/data/charts
 
@@ -360,6 +437,9 @@ EOF
 main() {
     echo -e "${YELLOW}准备启动MCP服务器，使用 $TRANSPORT 传输协议...${NC}"
 
+    # 检查MCP服务器端口是否可用
+    check_port $PORT $FORCE_KILL
+    
     # 设置环境
     setup_venv
 
