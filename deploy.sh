@@ -143,46 +143,150 @@ check_error "Python虚拟环境依赖安装失败"
 
 # 安装uv包管理器
 print_section "安装uv包管理器"
+
+# 检查当前用户是否是root（通过sudo运行）
+IS_ROOT=false
+if [ "$(id -u)" -eq 0 ]; then
+    IS_ROOT=true
+    echo -e "${YELLOW}以root用户身份运行，将为系统安装uv${NC}"
+else
+    echo -e "${GREEN}以普通用户身份运行，将为当前用户安装uv${NC}"
+fi
+
 if ! command_exists uv; then
-    curl -sSf https://astral.sh/uv/install.sh | sh
-    check_error "uv安装失败"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    # 确保当前会话可以使用uv
-    if ! command_exists uv; then
-        source "$HOME/.cargo/env"
+    # 如果是root用户（sudo运行），安装到/usr/local/bin
+    if [ "$IS_ROOT" = true ]; then
+        # 创建临时目录
+        TMP_DIR=$(mktemp -d)
+        cd "$TMP_DIR" || exit 1
+        
+        # 下载并安装uv
+        echo "下载uv安装脚本..."
+        curl -sSf https://astral.sh/uv/install.sh -o install.sh
+        chmod +x install.sh
+        
+        # 安装到/usr/local/bin（系统范围）
+        echo "安装uv到系统路径..."
+        ./install.sh --system
+        check_error "uv系统安装失败"
+        
+        # 检查uv是否安装成功
+        if command_exists uv; then
+            echo -e "${GREEN}uv已成功安装到系统路径${NC}"
+        else
+            echo -e "${RED}uv安装成功但命令不可用，请检查PATH${NC}"
+            export PATH="/usr/local/bin:$PATH"
+            if command_exists uv; then
+                echo -e "${GREEN}添加/usr/local/bin到PATH后，uv命令可用${NC}"
+            else
+                echo -e "${RED}即使添加/usr/local/bin到PATH后，uv命令仍不可用${NC}"
+                exit 1
+            fi
+        fi
+        
+        # 回到原目录并清理
+        cd - || exit 1
+        rm -rf "$TMP_DIR"
+    else
+        # 普通用户安装
+        curl -sSf https://astral.sh/uv/install.sh | sh
+        check_error "uv安装失败"
+        export PATH="$HOME/.cargo/bin:$PATH"
+        
+        # 确保当前会话可以使用uv
+        if ! command_exists uv; then
+            if [ -f "$HOME/.cargo/env" ]; then
+                source "$HOME/.cargo/env"
+                echo -e "${GREEN}已加载Cargo环境${NC}"
+            else
+                echo -e "${YELLOW}警告: $HOME/.cargo/env 不存在，尝试添加 ~/.cargo/bin 到 PATH${NC}"
+                export PATH="$HOME/.cargo/bin:$PATH"
+            fi
+        fi
     fi
-    echo -e "${GREEN}uv已安装${NC}"
+    
+    # 最终检查
+    if command_exists uv; then
+        echo -e "${GREEN}uv已成功安装和配置${NC}"
+        uv --version
+    else
+        echo -e "${RED}错误: 安装后uv命令仍不可用${NC}"
+        exit 1
+    fi
 else
     echo -e "${GREEN}uv已安装${NC}"
-    # 更新uv到最新版本
-    curl -sSf https://astral.sh/uv/install.sh | sh
+    uv --version
+    
+    # 如果是root用户且uv不在系统路径，可能需要更新
+    if [ "$IS_ROOT" = true ] && [ ! -f "/usr/local/bin/uv" ]; then
+        echo -e "${YELLOW}以root用户运行但uv不在系统路径，尝试安装到系统路径...${NC}"
+        TMP_DIR=$(mktemp -d)
+        cd "$TMP_DIR" || exit 1
+        curl -sSf https://astral.sh/uv/install.sh -o install.sh
+        chmod +x install.sh
+        ./install.sh --system
+        cd - || exit 1
+        rm -rf "$TMP_DIR"
+        echo -e "${GREEN}uv已更新到系统路径${NC}"
+    fi
 fi
 
 # 创建Python虚拟环境
 print_section "创建Python虚拟环境"
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
     # 使用uv创建虚拟环境
-    uv venv "$PROJECT_DIR/.venv"
-    check_error "uv虚拟环境创建失败"
-    echo -e "${GREEN}使用uv创建的虚拟环境已创建${NC}"
+    echo "创建虚拟环境: $PROJECT_DIR/.venv"
+    
+    # 确保uv命令可用
+    if ! command_exists uv; then
+        echo -e "${RED}错误: uv命令不可用，无法创建虚拟环境${NC}"
+        echo -e "${YELLOW}尝试使用传统方式创建虚拟环境...${NC}"
+        python3 -m venv "$PROJECT_DIR/.venv"
+        check_error "虚拟环境创建失败"
+    else
+        # 使用uv创建虚拟环境
+        uv venv "$PROJECT_DIR/.venv"
+        check_error "uv虚拟环境创建失败"
+    fi
+    
+    echo -e "${GREEN}虚拟环境已创建: $PROJECT_DIR/.venv${NC}"
 else
-    echo -e "${GREEN}虚拟环境已存在${NC}"
+    echo -e "${GREEN}虚拟环境已存在: $PROJECT_DIR/.venv${NC}"
+fi
+
+# 检查虚拟环境目录
+if [ ! -d "$PROJECT_DIR/.venv" ]; then
+    echo -e "${RED}错误: 虚拟环境目录不存在${NC}"
+    exit 1
 fi
 
 # 激活虚拟环境
+echo "激活虚拟环境..."
 source "$PROJECT_DIR/.venv/bin/activate"
 check_error "虚拟环境激活失败"
+echo -e "${GREEN}虚拟环境已激活: $(which python)${NC}"
 
 # 安装项目依赖
 print_section "安装项目依赖"
-# 使用uv安装依赖，速度更快
-echo -e "${GREEN}使用uv安装依赖...${NC}"
-uv pip sync "$PROJECT_DIR/requirements.txt"
-check_error "uv依赖安装失败"
-
-# 显示已安装的包
-echo -e "${BLUE}已安装的包:${NC}"
-uv pip list
+# 优先使用uv安装依赖
+if command_exists uv; then
+    echo -e "${GREEN}使用uv安装依赖...${NC}"
+    uv pip sync "$PROJECT_DIR/requirements.txt"
+    check_error "uv依赖安装失败"
+    
+    # 显示已安装的包
+    echo -e "${BLUE}已安装的包:${NC}"
+    uv pip list
+else
+    # 如果uv不可用，使用传统pip
+    echo -e "${YELLOW}uv不可用，使用传统pip安装依赖...${NC}"
+    python -m pip install -r "$PROJECT_DIR/requirements.txt"
+    check_error "依赖安装失败"
+    
+    # 显示已安装的包
+    echo -e "${BLUE}已安装的包:${NC}"
+    python -m pip list
+fi
 
 # 创建必要的目录和配置文件
 print_section "创建必要的目录和配置文件"
