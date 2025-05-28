@@ -86,6 +86,12 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
             logger.error(f"生成测试HTML文件时发生错误: {e}")
             print(f"错误: 生成测试HTML文件时发生错误: {e}", file=sys.stderr)
 
+        # 确保host是0.0.0.0以允许外部访问
+        if host != '0.0.0.0':
+            logger.warning(f"主机地址已从 {host} 更改为 0.0.0.0 以允许外部访问")
+            print(f"警告: 主机地址已从 {host} 更改为 0.0.0.0 以允许外部访问", file=sys.stderr)
+            host = '0.0.0.0'
+
         # 创建服务器
         mcp = create_server()
 
@@ -100,33 +106,37 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
             print(f"SSE服务器将在 http://{host}:{port}/sse 上运行")
             logger.info(f"SSE服务器将在 http://{host}:{port}/sse 上运行")
 
+            # 强制设置环境变量确保监听在0.0.0.0
+            os.environ['MCP_SSE_HOST'] = '0.0.0.0'
+            os.environ['MCP_SSE_PORT'] = str(port)
+
             # 检查MCP版本，不同版本的API可能不同
             run_params = inspect.signature(mcp.run).parameters
 
             if 'host' in run_params and 'port' in run_params:
-                # 新版本API
-                mcp.run(transport=transport, host=host, port=port)
+                # 新版本API - 明确传入0.0.0.0
+                mcp.run(transport=transport, host='0.0.0.0', port=port)
             else:
-                # 旧版本API，需要设置环境变量
-                os.environ['MCP_SSE_HOST'] = host
-                os.environ['MCP_SSE_PORT'] = str(port)
+                # 旧版本API - 使用环境变量
                 mcp.run(transport=transport)
 
         elif transport == 'streamable-http':
             print(f"Streamable HTTP服务器将在 http://{host}:{port}/mcp 上运行")
             logger.info(f"Streamable HTTP服务器将在 http://{host}:{port}/mcp 上运行")
 
+            # 强制设置环境变量确保监听在0.0.0.0
+            os.environ['MCP_HTTP_HOST'] = '0.0.0.0'
+            os.environ['MCP_HTTP_PORT'] = str(port)
+            os.environ['MCP_HTTP_PATH'] = '/mcp'
+
             # 检查MCP版本，不同版本的API可能不同
             run_params = inspect.signature(mcp.run).parameters
 
             if 'host' in run_params and 'port' in run_params and 'path' in run_params:
-                # 新版本API
-                mcp.run(transport=transport, host=host, port=port, path='/mcp')
+                # 新版本API - 明确传入0.0.0.0
+                mcp.run(transport=transport, host='0.0.0.0', port=port, path='/mcp')
             else:
-                # 旧版本API，需要设置环境变量
-                os.environ['MCP_HTTP_HOST'] = host
-                os.environ['MCP_HTTP_PORT'] = str(port)
-                os.environ['MCP_HTTP_PATH'] = '/mcp'
+                # 旧版本API - 使用环境变量
                 mcp.run(transport=transport)
         else:
             raise ValueError(f"不支持的传输协议: {transport}")
