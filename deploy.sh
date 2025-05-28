@@ -831,25 +831,168 @@ else
         tail -n 20 /var/log/quantmcp/error.log
     fi
     
+    # 尝试修复常见问题
+    echo -e "\n${YELLOW}尝试修复常见问题...${NC}"
+    
+    # 检查是否缺少utils.html_server模块
+    if grep -q "No module named 'utils.html_server'" "/var/log/quantmcp/error.log" 2>/dev/null || \
+       journalctl -u quantmcp --no-pager | grep -q "No module named 'utils.html_server'"; then
+        echo -e "${YELLOW}检测到缺少utils.html_server模块，尝试创建...${NC}"
+        
+        # 创建html_server.py文件
+        cat > "$PROJECT_DIR/utils/html_server.py" << 'EOF'
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+HTML服务器模块
+
+提供用于生成HTML URL和测试HTML的函数
+"""
+
+import os
+import socket
+import logging
+import tempfile
+import datetime
+import webbrowser
+from pathlib import Path
+from urllib.parse import quote
+
+# 获取日志记录器
+logger = logging.getLogger('quant_mcp.html_server')
+
+# HTML文件存储目录
+HTML_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'charts')
+
+
+def get_html_url(html_path: str, use_file_protocol: bool = True) -> str:
+    """
+    获取HTML文件的URL
+    
+    Args:
+        html_path: HTML文件路径
+        use_file_protocol: 是否使用file://协议
+        
+    Returns:
+        str: HTML文件URL
+    """
+    if use_file_protocol:
+        # 使用file://协议，直接在浏览器中打开本地文件
+        abs_path = os.path.abspath(html_path)
+        return f"file://{quote(abs_path)}"
+    else:
+        # 可以在这里实现简单的HTTP服务器逻辑
+        # 目前仅返回文件路径
+        return html_path
+
+
+def generate_test_html(content: str = None, title: str = "测试页面") -> str:
+    """
+    生成测试HTML文件
+    
+    Args:
+        content: HTML内容
+        title: 页面标题
+        
+    Returns:
+        str: HTML文件路径
+    """
+    if content is None:
+        content = "<h1>测试页面</h1><p>这是一个测试页面</p>"
+    
+    # 确保目录存在
+    os.makedirs(HTML_DIR, exist_ok=True)
+    
+    # 获取当前时间
+    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # 创建临时HTML文件
+    fd, html_path = tempfile.mkstemp(suffix='.html', prefix='test_', dir=HTML_DIR)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{title}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; }}
+        h1 {{ color: #333; }}
+    </style>
+</head>
+<body>
+    {content}
+    <hr>
+    <footer>
+        <p>生成时间: {current_time}</p>
+        <p>主机名: {socket.gethostname()}</p>
+    </footer>
+</body>
+</html>""")
+    
+    logger.info(f"生成测试HTML文件: {html_path}")
+    return html_path
+
+
+def serve_html(html_path: str, port: int = 8080) -> str:
+    """
+    启动一个简单的HTTP服务器来提供HTML文件
+    
+    Args:
+        html_path: HTML文件路径
+        port: 服务器端口
+        
+    Returns:
+        str: 服务器URL
+    """
+    # 这个函数是占位符，实际实现可能需要更复杂的HTTP服务器
+    # 在实际应用中，您可能需要使用如http.server或Flask来实现
+    logger.warning("serve_html函数只是一个占位符，未实际启动HTTP服务器")
+    
+    # 返回文件URL
+    return get_html_url(html_path)
+EOF
+        
+        chmod +x "$PROJECT_DIR/utils/html_server.py"
+        echo -e "${GREEN}已创建utils.html_server模块${NC}"
+        
+        # 重启服务
+        echo "重启服务..."
+        sudo systemctl restart quantmcp
+        sleep 5
+        
+        # 重新检查服务状态
+        NEW_SERVICE_STATUS=$(sudo systemctl is-active quantmcp)
+        if [ "$NEW_SERVICE_STATUS" = "active" ]; then
+            echo -e "${GREEN}问题已修复! 服务现在已成功启动${NC}"
+            SERVICE_STATUS="active"
+        else
+            echo -e "${RED}服务仍然无法启动，可能存在其他问题${NC}"
+            sudo systemctl status quantmcp --no-pager
+        fi
+    fi
+    
     # 直接运行一次查看错误
-    echo -e "\n直接运行服务脚本以查看错误:"
-    cd "$PROJECT_DIR" && "$PROJECT_DIR/.venv/bin/python" -u "$PROJECT_DIR/server.py" --transport streamable-http --port "$SERVER_PORT" &
-    DIRECT_PID=$!
-    sleep 5
-    kill $DIRECT_PID 2>/dev/null
-    
-    # 如果服务无法启动，提供进一步的调试建议
-    echo -e "\n${YELLOW}服务启动失败。请尝试以下调试步骤:${NC}"
-    echo "1. 检查依赖是否正确安装: pip list"
-    echo "2. 检查auth.json配置文件是否正确"
-    echo "3. 检查端口 $SERVER_PORT 是否已被占用: netstat -tuln | grep :$SERVER_PORT"
-    echo "4. 手动运行服务查看错误: cd $PROJECT_DIR && .venv/bin/python server.py"
-    
-    read -p "是否继续部署过程? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "部署已取消"
-        exit 1
+    if [ "$SERVICE_STATUS" != "active" ]; then
+        echo -e "\n直接运行服务脚本以查看错误:"
+        cd "$PROJECT_DIR" && "$PROJECT_DIR/.venv/bin/python" -u "$PROJECT_DIR/server.py" --transport streamable-http --port "$SERVER_PORT" &
+        DIRECT_PID=$!
+        sleep 5
+        kill $DIRECT_PID 2>/dev/null
+        
+        # 如果服务无法启动，提供进一步的调试建议
+        echo -e "\n${YELLOW}服务启动失败。请尝试以下调试步骤:${NC}"
+        echo "1. 检查依赖是否正确安装: pip list"
+        echo "2. 检查auth.json配置文件是否正确"
+        echo "3. 检查端口 $SERVER_PORT 是否已被占用: netstat -tuln | grep :$SERVER_PORT"
+        echo "4. 手动运行服务查看错误: cd $PROJECT_DIR && .venv/bin/python server.py"
+        
+        read -p "是否继续部署过程? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "部署已取消"
+            exit 1
+        fi
     fi
 fi
 
