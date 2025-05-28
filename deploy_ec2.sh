@@ -362,70 +362,6 @@ EOF
     return 0
 }
 
-# 配置Nginx反向代理
-setup_nginx_proxy() {
-    echo -e "${YELLOW}配置Nginx反向代理...${NC}"
-    
-    # 获取当前目录
-    CURRENT_DIR=$(pwd)
-    
-    # 创建反向代理配置
-    cat > /tmp/mcp_proxy.conf << EOF
-server {
-    listen 80;  # 使用标准HTTP端口80，而不是与MCP相同的端口
-    server_name _;
-
-    # 允许跨域访问
-    add_header 'Access-Control-Allow-Origin' '*';
-    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-
-    # SSE端点代理
-    location /sse {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 36000s;
-    }
-
-    # MCP端点代理
-    location /mcp {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_buffering off;
-        proxy_cache off;
-    }
-
-    # 其他路径代理
-    location / {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-    }
-}
-EOF
-    
-    # 复制配置文件到Nginx目录
-    sudo cp /tmp/mcp_proxy.conf /etc/nginx/conf.d/mcp_proxy.conf
-    
-    # 确保Nginx配置有效
-    sudo nginx -t && {
-        echo -e "${GREEN}Nginx反向代理配置成功!${NC}"
-        sudo systemctl reload nginx
-    } || {
-        echo -e "${RED}Nginx反向代理配置失败，请检查配置!${NC}"
-        return 1
-    }
-    
-    echo -e "${GREEN}Nginx反向代理配置完成!${NC}"
-    return 0
-}
-
 # 检查端口是否已被占用
 check_port() {
     local port=$1
@@ -636,6 +572,12 @@ EOF"
 start_services() {
     echo -e "${YELLOW}启动服务...${NC}"
     
+    # 确保移除旧的MCP代理配置
+    if [ -f "/etc/nginx/conf.d/mcp_proxy.conf" ]; then
+        echo -e "${YELLOW}移除旧的MCP代理配置...${NC}"
+        sudo rm -f /etc/nginx/conf.d/mcp_proxy.conf
+    fi
+    
     # 启动Nginx
     sudo systemctl restart nginx || {
         echo -e "${RED}错误: 无法启动Nginx服务${NC}"
@@ -833,12 +775,11 @@ run_troubleshooting() {
     echo -e "   sudo systemctl restart mcp"
     echo -e "   sudo systemctl restart nginx"
     echo -e "2. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)"
-    echo -e "3. 如果使用了反向代理，检查配置是否正确"
-    echo -e "4. 尝试修改MCP服务定义:"
-    echo -e "   sudo nano /etc/systemd/system/mcp.service"
-    echo -e "   修改ExecStart行，确保使用0.0.0.0作为主机"
-    echo -e "   sudo systemctl daemon-reload"
-    echo -e "   sudo systemctl restart mcp"
+    echo -e "3. 确保MCP服务正在监听0.0.0.0而不是127.0.0.1"
+    echo -e "4. 检查防火墙和AWS安全组，确保允许端口 $PORT 和 $HTML_PORT 的入站流量"
+    echo -e "5. 尝试手动启动MCP服务器，观察日志输出:"
+    echo -e "   cd $(pwd) && source .venv/bin/activate"
+    echo -e "   python server.py --transport $TRANSPORT --host 0.0.0.0 --port $PORT"
     
     echo -e "${GREEN}故障诊断完成!${NC}"
 }
@@ -1097,14 +1038,9 @@ main() {
         echo -e "${YELLOW}警告: HTML服务器配置有问题，但将继续部署${NC}"
     }
     
-    # 配置Nginx
+    # 配置Nginx (仅用于HTML服务)
     setup_nginx || {
         echo -e "${YELLOW}警告: Nginx配置有问题，但将继续部署${NC}"
-    }
-    
-    # 配置Nginx反向代理
-    setup_nginx_proxy || {
-        echo -e "${YELLOW}警告: Nginx反向代理配置有问题，可能无法从外部访问MCP服务${NC}"
     }
     
     # 检查端口是否可用
