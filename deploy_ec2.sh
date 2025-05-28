@@ -24,15 +24,19 @@ show_help() {
     echo "  -H, --host HOST           指定主机地址 (默认: 0.0.0.0)"
     echo "  -p, --port PORT           指定端口号 (默认: 8000)"
     echo "  --html-port PORT          指定HTML服务器端口号 (默认: 8081)"
+    echo "  --troubleshoot            运行故障诊断"
     echo ""
     echo "示例:"
     echo "  $0                        # 使用默认设置部署 (SSE, 0.0.0.0:8000)"
     echo "  $0 -t streamable-http     # 使用Streamable HTTP传输协议部署"
     echo "  $0 -p 9000 --html-port 9001   # 在端口9000上部署MCP服务器，在端口9001上部署HTML服务器"
+    echo "  $0 --troubleshoot         # 运行故障诊断"
     exit 0
 }
 
 # 解析命令行参数
+TROUBLESHOOT=false
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -53,6 +57,10 @@ while [[ $# -gt 0 ]]; do
         --html-port)
             HTML_PORT="$2"
             shift 2
+            ;;
+        --troubleshoot)
+            TROUBLESHOOT=true
+            shift 1
             ;;
         *)
             echo -e "${RED}错误: 未知选项 $1${NC}"
@@ -345,7 +353,16 @@ User=$(whoami)
 WorkingDirectory=$CURRENT_DIR
 Environment=\"MCP_ENV=production\"
 Environment=\"MCP_SERVER_HOST=$PUBLIC_IP\"
-ExecStart=$CURRENT_DIR/.venv/bin/python server.py --transport $TRANSPORT --host $HOST --port $PORT
+Environment=\"UVICORN_HOST=0.0.0.0\"
+ExecStart=$CURRENT_DIR/.venv/bin/python -c \"
+import os
+os.environ['HOST'] = '0.0.0.0'
+os.environ['BIND'] = '0.0.0.0'
+import sys
+sys.path.insert(0, '$CURRENT_DIR')
+from server import main
+main(host='0.0.0.0', port=$PORT, transport='$TRANSPORT')
+\"
 Restart=on-failure
 RestartSec=5s
 
@@ -493,6 +510,164 @@ show_service_info() {
     echo -e "${GREEN}测试HTML页面: http://$PUBLIC_IP:$HTML_PORT/charts/test.html${NC}"
 }
 
+# 配置防火墙
+setup_firewall() {
+    echo -e "${YELLOW}配置防火墙...${NC}"
+    
+    # 检查是否安装了ufw
+    if command -v ufw &> /dev/null; then
+        echo -e "${YELLOW}使用UFW配置防火墙...${NC}"
+        
+        # 允许SSH连接
+        sudo ufw allow ssh
+        
+        # 允许MCP服务端口
+        sudo ufw allow $PORT/tcp
+        
+        # 允许HTML服务端口
+        sudo ufw allow $HTML_PORT/tcp
+        
+        # 如果防火墙未启用，则启用它
+        if sudo ufw status | grep -q "inactive"; then
+            echo -e "${YELLOW}启用UFW防火墙...${NC}"
+            echo "y" | sudo ufw enable
+        fi
+        
+        echo -e "${GREEN}UFW防火墙配置完成!${NC}"
+    elif command -v iptables &> /dev/null; then
+        echo -e "${YELLOW}使用iptables配置防火墙...${NC}"
+        
+        # 允许SSH连接
+        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+        
+        # 允许MCP服务端口
+        sudo iptables -A INPUT -p tcp --dport $PORT -j ACCEPT
+        
+        # 允许HTML服务端口
+        sudo iptables -A INPUT -p tcp --dport $HTML_PORT -j ACCEPT
+        
+        # 保存iptables规则
+        if command -v netfilter-persistent &> /dev/null; then
+            sudo netfilter-persistent save
+        elif command -v iptables-save &> /dev/null; then
+            sudo iptables-save > /etc/iptables/rules.v4
+        else
+            echo -e "${YELLOW}警告: 无法保存iptables规则，可能在重启后失效${NC}"
+        fi
+        
+        echo -e "${GREEN}iptables防火墙配置完成!${NC}"
+    else
+        echo -e "${YELLOW}警告: 未找到支持的防火墙工具 (ufw 或 iptables)${NC}"
+    fi
+    
+    echo -e "${YELLOW}请确保AWS安全组允许端口 $PORT 和 $HTML_PORT 的入站流量${NC}"
+}
+
+# 配置AWS安全组
+setup_aws_security_group() {
+    echo -e "${YELLOW}检查AWS安全组配置...${NC}"
+    
+    # 检查是否安装了AWS CLI
+    if ! command -v aws &> /dev/null; then
+        echo -e "${YELLOW}未安装AWS CLI，跳过安全组配置。请手动配置AWS安全组以允许端口 $PORT 和 $HTML_PORT 的入站流量。${NC}"
+        return 0
+    fi
+    
+    # 获取实例ID
+    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+    if [ -z "$INSTANCE_ID" ]; then
+        echo -e "${YELLOW}无法获取实例ID，跳过安全组配置。请手动配置AWS安全组。${NC}"
+        return 0
+    fi
+    
+    # 获取安全组ID
+    SECURITY_GROUP_IDS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].SecurityGroups[*].GroupId" --output text)
+    if [ -z "$SECURITY_GROUP_IDS" ]; then
+        echo -e "${YELLOW}无法获取安全组ID，跳过安全组配置。请手动配置AWS安全组。${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}找到以下安全组: $SECURITY_GROUP_IDS${NC}"
+    
+    # 为每个安全组添加规则
+    for SG_ID in $SECURITY_GROUP_IDS; do
+        echo -e "${YELLOW}配置安全组 $SG_ID...${NC}"
+        
+        # 添加MCP服务端口规则
+        aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port $PORT \
+            --cidr 0.0.0.0/0 \
+            --description "MCP Server" 2>/dev/null || echo -e "${YELLOW}MCP服务端口规则已存在或无法添加${NC}"
+        
+        # 添加HTML服务端口规则
+        aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port $HTML_PORT \
+            --cidr 0.0.0.0/0 \
+            --description "MCP HTML Server" 2>/dev/null || echo -e "${YELLOW}HTML服务端口规则已存在或无法添加${NC}"
+    done
+    
+    echo -e "${GREEN}AWS安全组配置完成!${NC}"
+    return 0
+}
+
+# 运行故障诊断
+run_troubleshooting() {
+    echo -e "${YELLOW}运行故障诊断...${NC}"
+    
+    # 检查服务状态
+    echo -e "${YELLOW}检查服务状态:${NC}"
+    sudo systemctl status mcp --no-pager
+    sudo systemctl status nginx --no-pager
+    
+    # 检查端口是否开放
+    echo -e "${YELLOW}检查端口是否开放:${NC}"
+    if command -v ss &> /dev/null; then
+        ss -tulpn | grep -E ":($PORT|$HTML_PORT)"
+    elif command -v netstat &> /dev/null; then
+        netstat -tulpn | grep -E ":($PORT|$HTML_PORT)"
+    fi
+    
+    # 检查日志
+    echo -e "${YELLOW}检查MCP服务日志 (最后10行):${NC}"
+    sudo journalctl -u mcp -n 10 --no-pager
+    
+    echo -e "${YELLOW}检查Nginx日志 (最后10行):${NC}"
+    sudo tail -n 10 /var/log/nginx/error.log 2>/dev/null || echo "无法读取Nginx错误日志"
+    
+    # 检查防火墙
+    echo -e "${YELLOW}检查防火墙状态:${NC}"
+    if command -v ufw &> /dev/null; then
+        sudo ufw status
+    elif command -v iptables &> /dev/null; then
+        sudo iptables -L -n
+    fi
+    
+    # 测试连接性
+    echo -e "${YELLOW}测试本地连接性:${NC}"
+    curl -s -I "http://localhost:$PORT/ping" || echo "无法连接到MCP服务器端口"
+    curl -s -I "http://localhost:$HTML_PORT" || echo "无法连接到HTML服务器端口"
+    
+    # 如果仍然无法访问，提供解决方案
+    echo -e "${YELLOW}如果仍然无法从外部访问服务，请尝试以下解决方案:${NC}"
+    echo -e "1. 检查AWS安全组配置，确保允许端口 $PORT 和 $HTML_PORT 的入站流量"
+    echo -e "2. 执行以下命令重启服务:"
+    echo -e "   sudo systemctl restart mcp"
+    echo -e "   sudo systemctl restart nginx"
+    echo -e "3. 检查server.py文件，确保没有硬编码的主机地址 (127.0.0.1)"
+    echo -e "4. 如果使用了反向代理，检查配置是否正确"
+    echo -e "5. 尝试修改MCP服务定义:"
+    echo -e "   sudo nano /etc/systemd/system/mcp.service"
+    echo -e "   修改ExecStart行，确保使用0.0.0.0作为主机"
+    echo -e "   sudo systemctl daemon-reload"
+    echo -e "   sudo systemctl restart mcp"
+    
+    echo -e "${GREEN}故障诊断完成!${NC}"
+}
+
 # 主函数
 main() {
     echo -e "${YELLOW}开始在EC2实例上部署MCP服务器...${NC}"
@@ -542,6 +717,16 @@ main() {
         echo -e "${YELLOW}警告: 无法使用HTML端口 $HTML_PORT，HTML服务可能无法正常工作${NC}"
     }
     
+    # 配置防火墙
+    setup_firewall || {
+        echo -e "${YELLOW}警告: 防火墙配置有问题，但将继续部署${NC}"
+    }
+    
+    # 配置AWS安全组
+    setup_aws_security_group || {
+        echo -e "${YELLOW}警告: AWS安全组配置有问题，请手动配置${NC}"
+    }
+    
     # 创建systemd服务
     create_systemd_service || {
         echo -e "${RED}错误: systemd服务创建失败，终止部署${NC}"
@@ -559,14 +744,23 @@ main() {
     
     # 验证服务是否正常运行
     echo -e "${YELLOW}验证服务是否正常运行...${NC}"
-    if curl -s "http://$PUBLIC_IP:$PORT/ping" | grep -q "pong"; then
+    if curl -s "http://localhost:$PORT/ping" | grep -q "pong"; then
         echo -e "${GREEN}MCP服务器正常运行!${NC}"
     else
-        echo -e "${YELLOW}警告: 无法验证MCP服务器是否正常运行${NC}"
+        echo -e "${YELLOW}警告: 无法验证MCP服务器是否正常运行，运行故障诊断...${NC}"
+        run_troubleshooting
     fi
     
     echo -e "${GREEN}部署过程完成!${NC}"
+    echo -e "${YELLOW}如果遇到访问问题，请执行 'sudo $0 --troubleshoot' 运行故障诊断${NC}"
 }
+
+# 如果只是运行故障诊断，则跳过部署过程
+if [ "$TROUBLESHOOT" = true ]; then
+    echo -e "${YELLOW}运行故障诊断模式...${NC}"
+    run_troubleshooting
+    exit 0
+fi
 
 # 执行主函数
 main
