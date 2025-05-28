@@ -366,47 +366,98 @@ EOF
 check_port() {
     local port=$1
     local force_kill=${2:-false}
-    local pid
+    local pids=()
 
     echo -e "${YELLOW}检查端口 $port 是否可用...${NC}"
     
-    # 使用ss命令或lsof查找占用端口的进程
+    # 使用多种命令查找占用端口的所有进程
     if command -v ss &> /dev/null; then
-        pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
-    elif command -v lsof &> /dev/null; then
-        pid=$(lsof -ti:$port)
-    else
-        echo -e "${YELLOW}警告: 无法检查端口占用，未找到ss或lsof命令${NC}"
-        return
+        pids+=($(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2))
     fi
     
-    if [ -n "$pid" ]; then
-        echo -e "${RED}错误: 端口 $port 已被进程 $pid 占用${NC}"
-        echo -e "${YELLOW}尝试终止占用进程...${NC}"
+    if command -v lsof &> /dev/null; then
+        pids+=($(lsof -ti:$port))
+    fi
+    
+    if command -v netstat &> /dev/null; then
+        pids+=($(netstat -tunlp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d/ -f1))
+    fi
+    
+    # 去重
+    pids=($(echo "${pids[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+    
+    if [ ${#pids[@]} -gt 0 ]; then
+        echo -e "${RED}错误: 端口 $port 已被以下进程占用: ${pids[*]}${NC}"
         
-        # 尝试正常终止
-        kill $pid 2>/dev/null
-        sleep 2
-        
-        # 检查进程是否仍在运行
-        if ps -p $pid > /dev/null; then
-            echo -e "${YELLOW}进程未响应正常终止信号，尝试强制终止...${NC}"
-            kill -9 $pid 2>/dev/null
-            sleep 1
-        fi
-        
-        # 再次检查端口
-        if command -v ss &> /dev/null; then
-            pid=$(ss -tunlp | grep ":$port " | awk '{print $7}' | grep -o 'pid=[0-9]*' | cut -d= -f2)
-        elif command -v lsof &> /dev/null; then
-            pid=$(lsof -ti:$port)
-        fi
-        
-        if [ -n "$pid" ]; then
-            echo -e "${RED}错误: 无法释放端口 $port，仍被进程 $pid 占用${NC}"
-            exit 1
-        else
+        if [ "$force_kill" = true ]; then
+            echo -e "${YELLOW}尝试终止占用进程...${NC}"
+            
+            # 显示进程信息
+            echo -e "${YELLOW}进程详情:${NC}"
+            for pid in "${pids[@]}"; do
+                ps -f -p $pid 2>/dev/null || echo "进程 $pid 信息无法获取"
+            done
+            
+            # 尝试正常终止所有进程
+            for pid in "${pids[@]}"; do
+                echo -e "${YELLOW}尝试正常终止进程 $pid...${NC}"
+                kill $pid 2>/dev/null
+            done
+            
+            # 等待一会儿
+            sleep 3
+            
+            # 检查是否有进程仍在运行
+            still_running=()
+            for pid in "${pids[@]}"; do
+                if ps -p $pid > /dev/null 2>&1; then
+                    still_running+=($pid)
+                fi
+            done
+            
+            # 如果有进程仍在运行，使用强制终止
+            if [ ${#still_running[@]} -gt 0 ]; then
+                echo -e "${YELLOW}以下进程未响应正常终止信号，尝试强制终止: ${still_running[*]}${NC}"
+                for pid in "${still_running[@]}"; do
+                    echo -e "${YELLOW}强制终止进程 $pid...${NC}"
+                    kill -9 $pid 2>/dev/null
+                done
+                
+                # 再等待一会儿
+                sleep 2
+                
+                # 再次检查
+                final_running=()
+                for pid in "${still_running[@]}"; do
+                    if ps -p $pid > /dev/null 2>&1; then
+                        final_running+=($pid)
+                    fi
+                done
+                
+                if [ ${#final_running[@]} -gt 0 ]; then
+                    echo -e "${RED}错误: 无法终止以下进程: ${final_running[*]}${NC}"
+                    echo -e "${YELLOW}尝试使用以下命令手动终止:${NC}"
+                    for pid in "${final_running[@]}"; do
+                        echo -e "  sudo kill -9 $pid"
+                    done
+                    
+                    # 提供当前占用端口的进程的进一步信息
+                    echo -e "${YELLOW}获取详细信息...${NC}"
+                    sudo lsof -i :$port 2>/dev/null || echo "无法获取端口 $port 的详细信息"
+                    
+                    # 给出放弃该端口并使用其他端口的建议
+                    echo -e "${YELLOW}建议:${NC}"
+                    echo -e "1. 手动终止上述进程"
+                    echo -e "2. 或者使用其他端口: $0 -p $((port+1))"
+                    
+                    exit 1
+                fi
+            fi
+            
             echo -e "${GREEN}成功释放端口 $port${NC}"
+        else
+            echo -e "${YELLOW}请手动终止占用进程后再运行脚本，或使用其他端口${NC}"
+            exit 1
         fi
     else
         echo -e "${GREEN}端口 $port 可用${NC}"
