@@ -24,7 +24,6 @@ show_help() {
     echo "  -p, --port PORT         设置Nginx监听端口（默认: 80）"
     echo "  -s, --server-port PORT  设置MCP服务器端口（默认: 8000）"
     echo "  --no-nginx              不安装和配置Nginx"
-    echo "  --no-uv                 不安装uv包管理器，使用pip代替"
     echo ""
 }
 
@@ -32,7 +31,6 @@ show_help() {
 NGINX_PORT=80
 SERVER_PORT=8000
 INSTALL_NGINX=true
-USE_UV=true
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -40,7 +38,6 @@ while [[ "$#" -gt 0 ]]; do
         -p|--port) NGINX_PORT="$2"; shift ;;
         -s|--server-port) SERVER_PORT="$2"; shift ;;
         --no-nginx) INSTALL_NGINX=false ;;
-        --no-uv) USE_UV=false ;;
         *) echo "未知参数: $1"; show_help; exit 1 ;;
     esac
     shift
@@ -139,44 +136,35 @@ else
     exit 1
 fi
 
-# 安装或升级pip
-print_section "安装/升级pip"
-python3 -m pip install --upgrade pip
-check_error "pip升级失败"
+# 安装python3-venv（用于创建虚拟环境）
+print_section "安装Python虚拟环境依赖"
+sudo apt-get install -y python3-venv python3-full
+check_error "Python虚拟环境依赖安装失败"
 
-# 安装uv包管理器（如果需要）
-if [ "$USE_UV" = true ]; then
-    print_section "安装uv包管理器"
+# 安装uv包管理器
+print_section "安装uv包管理器"
+if ! command_exists uv; then
+    curl -sSf https://astral.sh/uv/install.sh | sh
+    check_error "uv安装失败"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    # 确保当前会话可以使用uv
     if ! command_exists uv; then
-        curl -sSf https://astral.sh/uv/install.sh | sh
-        check_error "uv安装失败"
-        export PATH="$HOME/.cargo/bin:$PATH"
-        # 确保当前会话可以使用uv
-        if ! command_exists uv; then
-            source "$HOME/.cargo/env"
-        fi
-        echo -e "${GREEN}uv已安装${NC}"
-    else
-        echo -e "${GREEN}uv已安装${NC}"
-        # 更新uv到最新版本
-        curl -sSf https://astral.sh/uv/install.sh | sh
+        source "$HOME/.cargo/env"
     fi
+    echo -e "${GREEN}uv已安装${NC}"
+else
+    echo -e "${GREEN}uv已安装${NC}"
+    # 更新uv到最新版本
+    curl -sSf https://astral.sh/uv/install.sh | sh
 fi
 
 # 创建Python虚拟环境
 print_section "创建Python虚拟环境"
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
-    if [ "$USE_UV" = true ] && command_exists uv; then
-        # 使用uv创建虚拟环境
-        uv venv "$PROJECT_DIR/.venv"
-        check_error "uv虚拟环境创建失败"
-        echo -e "${GREEN}使用uv创建的虚拟环境已创建${NC}"
-    else
-        # 使用传统方式创建虚拟环境
-        python3 -m venv "$PROJECT_DIR/.venv"
-        check_error "虚拟环境创建失败"
-        echo -e "${GREEN}虚拟环境已创建${NC}"
-    fi
+    # 使用uv创建虚拟环境
+    uv venv "$PROJECT_DIR/.venv"
+    check_error "uv虚拟环境创建失败"
+    echo -e "${GREEN}使用uv创建的虚拟环境已创建${NC}"
 else
     echo -e "${GREEN}虚拟环境已存在${NC}"
 fi
@@ -187,25 +175,14 @@ check_error "虚拟环境激活失败"
 
 # 安装项目依赖
 print_section "安装项目依赖"
-if [ "$USE_UV" = true ] && command_exists uv; then
-    # 使用uv安装依赖，速度更快
-    echo -e "${GREEN}使用uv安装依赖...${NC}"
-    uv pip sync "$PROJECT_DIR/requirements.txt"
-    check_error "uv依赖安装失败"
-    
-    # 显示已安装的包
-    echo -e "${BLUE}已安装的包:${NC}"
-    uv pip list
-else
-    # 使用传统pip安装依赖
-    echo -e "${YELLOW}使用传统pip安装依赖...${NC}"
-    pip install -r "$PROJECT_DIR/requirements.txt"
-    check_error "项目依赖安装失败"
-    
-    # 显示已安装的包
-    echo -e "${BLUE}已安装的包:${NC}"
-    pip list
-fi
+# 使用uv安装依赖，速度更快
+echo -e "${GREEN}使用uv安装依赖...${NC}"
+uv pip sync "$PROJECT_DIR/requirements.txt"
+check_error "uv依赖安装失败"
+
+# 显示已安装的包
+echo -e "${BLUE}已安装的包:${NC}"
+uv pip list
 
 # 创建必要的目录和配置文件
 print_section "创建必要的目录和配置文件"
