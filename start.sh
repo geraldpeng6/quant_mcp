@@ -69,35 +69,26 @@ if [ ! -f "server.py" ]; then
     exit 1
 fi
 
-# 检查 uv 是否已安装
-setup_uv() {
-    echo -e "${YELLOW}检查 uv 是否已安装...${NC}"
-
-    if ! command -v uv &> /dev/null; then
-        echo -e "${YELLOW}uv 未安装，正在安装...${NC}"
-
-        # 安装 uv
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-
-        # 添加 uv 到 PATH
-        if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-        fi
-
-        echo -e "${GREEN}uv 安装完成!${NC}"
-    else
-        echo -e "${GREEN}uv 已安装!${NC}"
-    fi
-}
-
 # 设置虚拟环境
 setup_venv() {
     echo -e "${YELLOW}检查虚拟环境...${NC}"
 
+    # 检查Python是否安装
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}错误: Python3未安装，请先安装Python3${NC}"
+        exit 1
+    fi
+
+    # 检查pip是否安装
+    if ! command -v pip3 &> /dev/null; then
+        echo -e "${RED}错误: pip3未安装，请先安装pip3${NC}"
+        exit 1
+    fi
+
     # 检查虚拟环境是否存在
     if [ ! -d ".venv" ]; then
         echo -e "${YELLOW}虚拟环境不存在，正在创建...${NC}"
-        uv venv .venv
+        python3 -m venv .venv
     else
         echo -e "${GREEN}虚拟环境已存在!${NC}"
     fi
@@ -110,10 +101,10 @@ setup_venv() {
     echo -e "${YELLOW}检查依赖...${NC}"
     if [ -f "requirements.txt" ]; then
         echo -e "${YELLOW}安装依赖...${NC}"
-        uv pip install -r requirements.txt
+        pip install -r requirements.txt
     else
         echo -e "${YELLOW}未找到 requirements.txt，尝试安装基本依赖...${NC}"
-        uv pip install mcp
+        pip install mcp
     fi
 
     echo -e "${GREEN}环境设置完成!${NC}"
@@ -217,7 +208,6 @@ main() {
     echo -e "${YELLOW}准备启动MCP服务器，使用 $TRANSPORT 传输协议...${NC}"
 
     # 设置环境
-    setup_uv
     setup_venv
 
     # 确保必要的目录存在

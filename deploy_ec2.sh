@@ -225,41 +225,81 @@ start_services() {
 show_service_info() {
     echo -e "${YELLOW}获取服务信息...${NC}"
     
-    # 获取公网IP - 一种方法成功即返回
+    # 获取公网IP - 检测真实IP，排除占位符IP
     get_public_ip() {
         local IP=""
         
-        # 方法1: 使用外部服务
-        echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
-        IP=$(curl -s -m 3 https://checkip.amazonaws.com 2>/dev/null)
-        if [[ -n "$IP" && "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "$IP"
-            return
-        fi
+        # 检查IP是否有效（非占位符/保留IP）
+        is_valid_ip() {
+            local ip=$1
+            # 检查是否是有效的IP格式
+            if ! [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                return 1
+            fi
+            
+            # 排除常见测试/示例IP
+            if [[ $ip == "123.45.67.89" || $ip == "1.2.3.4" || $ip == "0.0.0.0" ]]; then
+                return 1
+            fi
+            
+            # 排除回环地址
+            if [[ $ip == "127."* ]]; then
+                return 1
+            fi
+            
+            # 排除保留IP范围
+            local ip1 ip2 ip3 ip4
+            IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$ip"
+            
+            # 排除私有IP
+            if [[ $ip1 -eq 10 || 
+                 ($ip1 -eq 172 && $ip2 -ge 16 && $ip2 -le 31) || 
+                 ($ip1 -eq 192 && $ip2 -eq 168) ]]; then
+                return 1
+            fi
+            
+            return 0
+        }
         
-        # 方法2: 使用外部服务备选
-        echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
-        IP=$(curl -s -m 3 https://ifconfig.me 2>/dev/null)
-        if [[ -n "$IP" && "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "$IP"
-            return
-        fi
-        
-        # 方法3: 使用ip命令获取本地IP
-        echo -e "${YELLOW}尝试使用ip命令获取IP...${NC}"
-        if command -v ip >/dev/null 2>&1; then
-            IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-            if [[ -n "$IP" ]]; then
+        # 方法1: 直接使用dig查询
+        if command -v dig >/dev/null 2>&1; then
+            echo -e "${YELLOW}尝试使用dig获取IP...${NC}"
+            IP=$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null)
+            if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
                 echo "$IP"
                 return
             fi
         fi
         
-        # 方法4: 使用ifconfig命令获取本地IP
-        echo -e "${YELLOW}尝试使用ifconfig命令获取IP...${NC}"
-        if command -v ifconfig >/dev/null 2>&1; then
-            IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -n 1)
-            if [[ -n "$IP" ]]; then
+        # 方法2: 使用外部服务
+        echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
+        IP=$(curl -s -m 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '\n')
+        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+            echo "$IP"
+            return
+        fi
+        
+        # 方法3: 使用外部服务备选
+        echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
+        IP=$(curl -s -m 5 https://ifconfig.me 2>/dev/null)
+        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+            echo "$IP"
+            return
+        fi
+        
+        # 方法4: 另一个备选服务
+        echo -e "${YELLOW}尝试使用ipinfo.io获取IP...${NC}"
+        IP=$(curl -s -m 5 https://ipinfo.io/ip 2>/dev/null)
+        if [[ -n "$IP" ]] && is_valid_ip "$IP"; then
+            echo "$IP"
+            return
+        fi
+        
+        # 获取本地IP
+        echo -e "${YELLOW}无法获取公网IP，尝试获取本地IP...${NC}"
+        if command -v hostname >/dev/null 2>&1; then
+            IP=$(hostname -I | awk '{print $1}')
+            if [[ -n "$IP" ]] && [[ $IP != "127.0.0.1" ]]; then
                 echo "$IP"
                 return
             fi
