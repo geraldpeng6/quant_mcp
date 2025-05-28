@@ -97,4 +97,36 @@ MCP (Model Context Protocol) 服务器，用于提供量化交易相关的工具
 1. 在`src/prompts/`目录下创建新的提示模板模块
 2. 在模块中定义提示模板
 3. 添加一个`register_prompts`函数来注册提示模板到MCP服务器
-4. 在`src/prompts/__init__.py`中导入并调用`register_prompts`函数 
+4. 在`src/prompts/__init__.py`中导入并调用`register_prompts`函数
+
+## 测试
+
+### 测试股票搜索功能
+
+我们提供了一个简单的测试脚本来测试股票搜索功能：
+
+1. 确保虚拟环境已激活：
+
+```bash
+# Linux/Mac
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+2. 运行测试脚本：
+
+```bash
+python test_search_stock.py
+```
+
+这个脚本会尝试从`data/config/auth.json`文件加载认证信息，然后搜索"稳健医疗"股票。
+
+如果您需要手动设置认证信息，请编辑脚本中的以下部分：
+
+```python
+# 方法1: 手动设置认证信息
+token = "输入您的token"  # 替换为您的实际token
+user_id = "输入您的user_id"  # 替换为您的实际user_id
+``` 

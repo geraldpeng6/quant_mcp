@@ -385,22 +385,13 @@ server {
     location /charts/ {
         alias $CHARTS_DIR/;
 
-        # 设置正确的MIME类型
-        types {
-            text/html html htm;
-            text/css css;
-            application/javascript js;
-            image/png png;
-            image/jpeg jpg jpeg;
-            image/gif gif;
-            image/svg+xml svg svgz;
-        }
-        
+        # 允许所有文件类型以方便调试
+        add_header Content-Type text/html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
         # 允许跨域访问
         add_header 'Access-Control-Allow-Origin' '*';
         add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
         add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
 
         # 禁止目录列表
         autoindex off;
@@ -438,27 +429,12 @@ EOF
         sudo cp "$TEMP_CONF_FILE" "$NGINX_CONF_DIR/mcp_html_server.conf"
         rm "$TEMP_CONF_FILE"
         
-        # 确保charts目录存在
-        mkdir -p data/charts
-        
-        # 关键修复：设置/home/ubuntu目录权限
-        echo -e "${YELLOW}设置关键路径权限...${NC}"
-        if [ -d "/home/$(whoami)" ]; then
-            sudo chmod 755 "/home/$(whoami)"
-            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
-        fi
-        
         # 测试配置
         echo -e "${YELLOW}测试Nginx配置...${NC}"
         if sudo nginx -t; then
             # 重新加载Nginx
             echo -e "${YELLOW}启动Nginx服务...${NC}"
             sudo systemctl start nginx || sudo service nginx start
-            # 确保Nginx已经启动
-            if ! systemctl is-active --quiet nginx; then
-                echo -e "${YELLOW}尝试以其他方式启动Nginx...${NC}"
-                sudo nginx || true
-            fi
             echo -e "${GREEN}Nginx配置已更新并启动${NC}"
         else
             echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
@@ -472,13 +448,10 @@ EOF
         
         create_nginx_config "$NGINX_CONF_DIR/mcp_html_server.conf"
         
-        # 确保charts目录存在
-        mkdir -p data/charts
-        
         # 测试配置
         if nginx -t; then
             # 启动Nginx
-            brew services restart nginx
+            brew services start nginx
             echo -e "${GREEN}Nginx配置已更新并启动${NC}"
         else
             echo -e "${RED}Nginx配置测试失败，请检查配置文件${NC}"
@@ -555,119 +528,23 @@ EOF"
 generate_test_html() {
     echo -e "${YELLOW}生成测试HTML文件...${NC}"
     
-    # 确保charts目录存在
-    mkdir -p data/charts
+    # 确保必要的目录存在
+    mkdir -p data/logs data/klines data/charts data/temp data/config data/backtest data/templates
     
-    # 创建测试HTML文件
+    # 直接创建测试HTML文件，避免依赖Python函数
     TEST_HTML_PATH="data/charts/test.html"
-    
     cat > "$TEST_HTML_PATH" << EOF
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MCP HTML服务器测试</title>
+    <title>MCP测试页面</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        .success { color: green; }
-        .info { color: blue; }
-        .server-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 20px; }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>MCP HTML服务器测试</h1>
-        <p class="success">如果您看到此页面，说明HTML服务器配置成功。</p>
-
-        <div class="server-info">
-            <h2>服务器信息</h2>
-            <p><strong>HTML端口:</strong> $HTML_PORT</p>
-            <p><strong>生成时间:</strong> <span id="time"></span></p>
-            <p><a href="index.html">查看索引页面</a></p>
-        </div>
-
-        <script>
-            document.getElementById('time').textContent = new Date().toLocaleString();
-        </script>
-    </div>
-</body>
-</html>
-EOF
-
-    # 创建索引HTML文件，帮助测试多个HTML文件
-    INDEX_HTML_PATH="data/charts/index.html"
-    
-    cat > "$INDEX_HTML_PATH" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>MCP Charts索引</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        h1 { color: #333; }
-        ul { padding-left: 20px; }
-        li { margin-bottom: 10px; }
-        .timestamp { color: #888; font-size: 0.9em; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>MCP Charts索引</h1>
-        <p>此页面列出了charts目录中的可用HTML文件。</p>
-        
-        <ul>
-            <li><a href="test.html">测试页面</a> - 基本测试HTML</li>
-            <li><a href="demo.html">演示图表</a> - 图表演示页面</li>
-        </ul>
-        
-        <p class="timestamp">页面生成时间: <span id="time"></span></p>
-        
-        <script>
-            document.getElementById('time').textContent = new Date().toLocaleString();
-        </script>
-    </div>
-</body>
-</html>
-EOF
-
-    # 创建演示图表HTML文件
-    DEMO_HTML_PATH="data/charts/demo.html"
-    
-    cat > "$DEMO_HTML_PATH" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>MCP 图表演示</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        .chart { width: 100%; height: 300px; background-color: #f5f5f5; border: 1px solid #ddd; margin-top: 20px; display: flex; justify-content: center; align-items: center; }
-        h1 { color: #333; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>MCP 图表演示</h1>
-        <p>这是一个简单的图表演示页面。如果您能看到此内容，说明charts目录下的HTML文件可以正确访问。</p>
-        
-        <div class="chart">
-            <div>图表演示区域</div>
-        </div>
-        
-        <p>生成时间: <span id="time"></span></p>
-        <p><a href="index.html">返回索引页面</a></p>
-        
-        <script>
-            document.getElementById('time').textContent = new Date().toLocaleString();
-        </script>
-    </div>
+    <h1>MCP测试页面</h1>
+    <p>这是一个测试页面，如果您能看到此内容，说明HTML服务器配置正确。</p>
+    <p>当前时间: <span id="time"></span></p>
+    <script>document.getElementById("time").textContent = new Date().toLocaleString();</script>
 </body>
 </html>
 EOF
@@ -678,15 +555,7 @@ EOF
     
     # 如果是Linux，设置www-data权限
     if [ "$MACHINE" = "Linux" ]; then
-        # 递归设置目录权限
-        sudo chmod -R 755 data/charts
-        # 递归设置文件权限
-        find data/charts -type f -exec sudo chmod 644 {} \;
-        # 设置目录所有者
-        sudo chown -R www-data:www-data data/charts || echo "警告: 无法更改所有者，请手动执行: sudo chown -R www-data:www-data $(pwd)/data/charts"
-        # 确保nginx用户可以访问整个路径
-        sudo chmod 755 $(pwd)
-        sudo chmod 755 $(pwd)/data
+        sudo chown -R www-data:www-data data/charts || true
     fi
     
     # 尝试获取服务器主机地址
@@ -715,127 +584,28 @@ except Exception as e:
     return 0
 }
 
-# 添加HTML文件访问诊断和修复函数
-diagnose_html_access() {
-    echo -e "${YELLOW}诊断和修复HTML文件访问问题...${NC}"
+# 启动服务
+start_mcp() {
+    echo -e "${GREEN}启动MCP服务器，使用${TRANSPORT}传输协议${NC}"
     
-    # 确保charts目录存在
-    mkdir -p data/charts
-    
-    # 测试URL构建
-    SERVER_HOST=$(python -c "
-import sys
-sys.path.append('.')
-try:
-    from utils.html_server import get_server_host
-    host = get_server_host()
-    print(host)
-except Exception as e:
-    print('localhost')
-")
-    
-    TEST_URL="http://${SERVER_HOST}:${HTML_PORT}/charts/test.html"
-    
-    # 测试访问
-    echo -e "${YELLOW}尝试访问测试HTML文件: $TEST_URL${NC}"
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TEST_URL")
-    
-    if [ "$HTTP_STATUS" = "200" ]; then
-        echo -e "${GREEN}HTML文件访问正常 (HTTP 200)!${NC}"
+    # 在Linux部署模式下，服务已经通过systemd启动
+    if [ "$MACHINE" = "Linux" ] && [ "$DEPLOY_MODE" = "deploy" ]; then
+        echo -e "${GREEN}MCP服务器已通过systemd启动${NC}"
         return 0
     fi
     
-    echo -e "${YELLOW}HTML文件访问问题 (HTTP $HTTP_STATUS), 开始修复...${NC}"
-    
-    # 直接应用关键权限修复 - 设置/home/ubuntu目录权限
-    if [ "$MACHINE" = "Linux" ]; then
-        echo -e "${YELLOW}应用关键权限修复...${NC}"
-        
-        # 解决权限问题的关键步骤: 设置用户主目录权限为755
-        if [ -d "/home/$(whoami)" ]; then
-            sudo chmod 755 "/home/$(whoami)"
-            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
-        fi
-        
-        # 重启Nginx
-        echo -e "${YELLOW}重启Nginx...${NC}"
-        sudo systemctl restart nginx || sudo service nginx restart || sudo nginx -s reload
-    fi
-    
-    # 重新测试访问
-    echo -e "${YELLOW}再次尝试访问测试HTML文件...${NC}"
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TEST_URL")
-    
-    if [ "$HTTP_STATUS" = "200" ]; then
-        echo -e "${GREEN}修复成功! HTML文件现在可以访问 (HTTP 200)${NC}"
-    else
-        echo -e "${RED}修复后仍然无法访问HTML文件 (HTTP $HTTP_STATUS)${NC}"
-        echo -e "${YELLOW}请检查Nginx日志:${NC}"
-        if [ "$MACHINE" = "Linux" ]; then
-            echo -e "$ sudo tail -f /var/log/nginx/error.log"
-            sudo tail -n 10 /var/log/nginx/error.log 2>/dev/null || echo "无法读取Nginx日志"
-        elif [ "$MACHINE" = "Mac" ]; then
-            echo -e "$ tail -f /opt/homebrew/var/log/nginx/error.log"
-        fi
-    fi
-    
-    return 0
-}
-
-# 检查配置文件
-check_config_files() {
-    echo -e "${YELLOW}检查MCP客户端配置...${NC}"
-    
-    echo -e "${YELLOW}注意: 本服务器直接从MCP客户端配置中获取认证信息${NC}"
-    echo -e "${YELLOW}请确保您的MCP客户端配置中包含以下节点:${NC}"
-    echo -e "${GREEN}  {${NC}"
-    echo -e "${GREEN}    \"quant_sse\": {${NC}"
-    echo -e "${GREEN}      \"token\": \"您的认证令牌\",${NC}"
-    echo -e "${GREEN}      \"user_id\": \"您的用户ID\",${NC}"
-    echo -e "${GREEN}      \"auto_approve_tools\": [\"工具名称1\", \"工具名称2\"]${NC}"
-    echo -e "${GREEN}    }${NC}"
-    echo -e "${GREEN}  }${NC}"
-    
-    return 0
-}
-
-# 启动服务器
-start_server() {
-    echo -e "${YELLOW}启动MCP服务器...${NC}"
-    
-    # 检查配置文件
-    check_config_files
-    
-    # 创建启动命令
-    CMD="python server.py --transport $TRANSPORT"
-    
-    if [ "$TRANSPORT" != "stdio" ]; then
-        CMD="$CMD --host $HOST --port $PORT"
-    fi
-    
-    # 打印启动信息
-    echo -e "${GREEN}启动命令: $CMD${NC}"
-    
-    # 如果是stdio模式，直接执行
+    # 根据传输协议选择不同的启动方式
     if [ "$TRANSPORT" = "stdio" ]; then
-        echo -e "${GREEN}启动MCP服务器 (stdio)...${NC}"
-        eval "$CMD"
-    else
-        # 检查是否有虚拟环境
-        if [ -d ".venv" ]; then
-            # 激活虚拟环境并启动
-            echo -e "${GREEN}使用虚拟环境启动MCP服务器...${NC}"
-            if [ "$MACHINE" = "Windows" ]; then
-                . .venv/Scripts/activate && eval "$CMD"
-            else
-                . .venv/bin/activate && eval "$CMD"
-            fi
-        else
-            # 直接启动
-            echo -e "${GREEN}启动MCP服务器...${NC}"
-            eval "$CMD"
-        fi
+        python server.py --transport stdio
+    elif [ "$TRANSPORT" = "sse" ]; then
+        echo -e "${GREEN}启动MCP服务器，使用SSE传输协议，地址: http://$HOST:$PORT/sse${NC}"
+        python server.py --transport sse --host "$HOST" --port "$PORT"
+    elif [ "$TRANSPORT" = "streamable-http" ]; then
+        echo -e "${GREEN}启动MCP服务器，使用Streamable HTTP传输协议，地址: http://$HOST:$PORT/mcp${NC}"
+        python server.py --transport streamable-http --host "$HOST" --port "$PORT"
     fi
+    
+    return 0
 }
 
 # 显示服务信息
@@ -884,9 +654,6 @@ redeploy() {
     # 配置HTML服务器
     setup_html_server
     
-    # 生成测试HTML文件
-    generate_test_html
-    
     # 配置Nginx - 使用改进版函数
     setup_nginx_improved
     
@@ -896,40 +663,16 @@ redeploy() {
         HOST="0.0.0.0"
     fi
     
-    # 关键步骤：应用权限修复
-    echo -e "${YELLOW}应用HTML文件访问权限修复...${NC}"
-    
-    if [ "$MACHINE" = "Linux" ]; then
-        # 确保charts目录存在
-        mkdir -p data/charts
-        
-        # 关键步骤: 设置用户主目录权限
-        if [ -d "/home/$(whoami)" ]; then
-            sudo chmod 755 "/home/$(whoami)"
-            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
-        fi
-    fi
-    
     if [ "$MACHINE" = "Linux" ]; then
         # 重新创建systemd服务
         create_systemd_service
     else
         # 直接启动
-        start_server
+        start_mcp
     fi
     
     echo -e "${GREEN}重新部署完成！${NC}"
     show_service_info
-    
-    # 增加关于HTML服务器的特定说明
-    echo -e "\n${YELLOW}HTML服务器访问说明:${NC}"
-    echo -e "1. 测试HTML页面应该可以通过以下URL访问:"
-    echo -e "   http://服务器IP:$HTML_PORT/charts/test.html"
-    echo -e "2. 如果无法访问，可尝试以下操作:"
-    echo -e "   - 重启Nginx: sudo systemctl restart nginx"
-    echo -e "   - 设置用户主目录权限: sudo chmod 755 /home/ubuntu"
-    echo -e "   - 查看日志: sudo tail -f /var/log/nginx/error.log"
-    echo -e "3. charts目录位于: $(pwd)/data/charts"
 }
 
 # 添加端口检查函数，在脚本结尾调用
@@ -961,8 +704,6 @@ check_ports() {
 main() {
     if [ "$REDEPLOY" = true ]; then
         redeploy
-        # 重新部署后进行HTML访问诊断
-        diagnose_html_access
         return 0
     fi
     
@@ -994,10 +735,7 @@ main() {
     # 配置HTML服务器
     setup_html_server
     
-    # 生成测试HTML文件
-    generate_test_html
-    
-    # 配置Nginx - 改进版配置，包括关键的权限设置
+    # 配置Nginx - 使用改进版函数
     setup_nginx_improved
     
     # 设置服务器绑定地址
@@ -1010,20 +748,37 @@ main() {
     # 创建systemd服务（仅在Linux部署模式下）
     create_systemd_service
     
-    # 诊断和修复HTML文件访问问题
-    diagnose_html_access
+    # 生成测试HTML文件
+    generate_test_html
     
     # 启动服务
-    start_server
+    start_mcp
     
     # 显示服务信息
     show_service_info
     
     # 检查端口监听状态
     check_ports
-    
-    echo -e "\n${YELLOW}部署完成。如果需要随时修复HTML文件访问问题，可以运行:${NC}"
-    echo -e "${GREEN}sudo $(pwd)/deploy_start.sh --redeploy${NC}"
+
+    # 设置数据目录权限
+    echo "设置数据目录权限..."
+    sudo chmod 755 /home/ubuntu
+    sudo chmod -R 755 $DIR/data/charts
+    sudo chown -R www-data:www-data $DIR/data/charts
+
+    # 设置auth.json并设置权限
+    echo "设置auth.json权限..."
+    if [ -f "$DIR/data/config/auth.json" ]; then
+        sudo chown root:root $DIR/data/config/auth.json
+        sudo chmod 600 $DIR/data/config/auth.json
+    else
+        echo "{}" | sudo tee $DIR/data/config/auth.json > /dev/null
+        sudo chown root:root $DIR/data/config/auth.json
+        sudo chmod 600 $DIR/data/config/auth.json
+    fi
+
+    # 重启Nginx以应用更改
+    sudo systemctl restart nginx
 }
 
 # 执行主函数

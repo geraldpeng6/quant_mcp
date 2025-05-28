@@ -98,12 +98,13 @@ def search_symbols(query: str, exchange: str = "ANY", symbol_type: str = "") -> 
     Returns:
         Optional[List[Dict[str, Any]]]: 搜索结果列表，每个结果包含股票代码、名称等信息，搜索失败时返回None
     """
-    # 主动加载认证配置
-    load_auth_config()
+    # 加载认证配置
+    if not load_auth_config():
+        return None
 
     # 获取认证信息
-    token, user_id = get_auth_info()
-    if not token or not user_id:
+    _, user_id = get_auth_info()
+    if not user_id:
         logger.error("错误: 无法获取认证信息")
         return None
 

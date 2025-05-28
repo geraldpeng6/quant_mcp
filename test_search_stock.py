@@ -11,6 +11,27 @@ import sys
 import logging
 import json
 import os
+
+# 检查是否在虚拟环境中运行
+def check_virtual_env():
+    """检查是否在虚拟环境中运行"""
+    return (hasattr(sys, 'real_prefix') or
+            (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
+
+# 如果不在虚拟环境中运行，提示用户并退出
+if not check_virtual_env():
+    print("=" * 70)
+    print("警告: 脚本未在虚拟环境中运行！")
+    print("请按照以下步骤激活虚拟环境后再运行测试:")
+    print("1. 激活虚拟环境:")
+    print("   - Linux/Mac: source .venv/bin/activate")
+    print("   - Windows: .venv\\Scripts\\activate")
+    print("2. 运行测试脚本:")
+    print("   python test_search_stock.py")
+    print("=" * 70)
+    sys.exit(1)
+
+# 导入模块（在虚拟环境检查之后导入）
 from utils.symbol_utils import search_symbols
 from utils.auth_utils import set_auth_from_mcp
 
@@ -108,4 +129,11 @@ def test_search_stock():
         traceback.print_exc()
 
 if __name__ == "__main__":
+    # 显示虚拟环境信息
+    print(f"Python 解释器路径: {sys.executable}")
+    print(f"Python 版本: {sys.version.split()[0]}")
+    print(f"运行在虚拟环境中: {'是' if check_virtual_env() else '否'}")
+    print("")
+    
+    # 运行测试
     test_search_stock() 
