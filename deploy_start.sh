@@ -401,6 +401,9 @@ server {
         client_max_body_size 10m;
         # 确保nginx有足够权限
         dav_access user:rw group:rw all:r;
+        
+        # 关键修复：确保此处文件可以被访问
+        allow all;
     }
 
     # MCP服务器代理 - 代理SSE请求到MCP服务器
@@ -570,6 +573,10 @@ EOF
         # 确保nginx用户可以访问整个路径
         sudo chmod 755 $(pwd)
         sudo chmod 755 $(pwd)/data
+        
+        # 确保nginx用户可以访问charts目录
+        sudo chmod -R 755 data/charts
+        sudo chmod a+r data/charts/*
     fi
     
     # 尝试获取服务器主机地址
