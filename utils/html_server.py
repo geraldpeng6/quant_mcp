@@ -89,10 +89,9 @@ def get_server_host() -> str:
     按以下顺序尝试获取服务器主机地址:
     1. 从环境变量MCP_SERVER_HOST获取
     2. 从配置文件获取
-    3. 如果在EC2环境中，从EC2元数据服务获取
-    4. 尝试从公网IP服务获取
-    5. 尝试获取本地IP
-    6. 如果以上都失败，返回localhost
+    3. 尝试从多个公网IP服务获取
+    4. 尝试获取本地IP
+    5. 如果以上都失败，返回localhost
 
     Returns:
         str: 服务器主机地址
@@ -112,35 +111,81 @@ def get_server_host() -> str:
     # 检查是否是生产环境
     is_production = os.environ.get('MCP_ENV') == 'production'
 
-    # 3. 如果在EC2环境中，从EC2元数据服务获取
-    if is_production and config.get('use_ec2_metadata', True):
-        ec2_ip = get_ec2_metadata()
-        if ec2_ip:
-            return ec2_ip
-
-    # 4. 尝试从公网IP服务获取
+    # 3. 尝试从多个公网IP服务获取
     if is_production and config.get('use_public_ip', True):
-        try:
-            response = requests.get('https://api.ipify.org', timeout=5)
-            if response.status_code == 200:
-                public_ip = response.text.strip()
-                logger.info(f"从公网IP服务获取到IP: {public_ip}")
-                return public_ip
-        except Exception as e:
-            logger.warning(f"获取公网IP失败: {e}")
+        # 公网IP服务列表
+        ip_services = [
+            'https://api.ipify.org',
+            'https://ifconfig.me',
+            'https://checkip.amazonaws.com',
+            'https://icanhazip.com',
+            'https://ipecho.net/plain'
+        ]
+        
+        # EC2元数据服务
+        if config.get('use_ec2_metadata', True):
+            ip_services.insert(0, 'http://169.254.169.254/latest/meta-data/public-ipv4')
+        
+        # 尝试每个服务
+        for service in ip_services:
+            try:
+                response = requests.get(service, timeout=3)
+                if response.status_code == 200:
+                    public_ip = response.text.strip()
+                    logger.info(f"从 {service} 获取到公网IP: {public_ip}")
+                    return public_ip
+            except Exception as e:
+                logger.debug(f"从 {service} 获取公网IP失败: {e}")
+                continue
 
-    # 5. 尝试获取本地IP
+    # 4. 尝试获取本地IP
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-        logger.info(f"获取到本地IP: {local_ip}")
-        return local_ip
+        # 使用多个DNS服务器尝试连接
+        dns_servers = ["8.8.8.8", "1.1.1.1", "114.114.114.114", "208.67.222.222"]
+        
+        for dns in dns_servers:
+            try:
+                s.connect((dns, 53))
+                local_ip = s.getsockname()[0]
+                s.close()
+                logger.info(f"获取到本地IP: {local_ip}")
+                return local_ip
+            except:
+                continue
+        
+        # 如果所有DNS服务器都失败，尝试一个备用方法
+        import subprocess
+        
+        # 获取操作系统类型
+        import platform
+        system = platform.system()
+        
+        if system == "Darwin" or system == "Linux":  # macOS or Linux
+            try:
+                # 使用ifconfig命令
+                cmd = "ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1"
+                local_ip = subprocess.check_output(cmd, shell=True).decode().strip()
+                if local_ip:
+                    logger.info(f"通过ifconfig获取到本地IP: {local_ip}")
+                    return local_ip
+            except:
+                pass
+        elif system == "Windows":
+            try:
+                # 使用ipconfig命令
+                cmd = "ipconfig | findstr /i \"IPv4\" | findstr /v \"127.0.0.1\" | findstr /v \"IPv4\" | findstr /v \"::\" | more +2"
+                output = subprocess.check_output(cmd, shell=True).decode()
+                local_ip = output.strip().split(":")[-1].strip()
+                if local_ip:
+                    logger.info(f"通过ipconfig获取到本地IP: {local_ip}")
+                    return local_ip
+            except:
+                pass
     except Exception as e:
         logger.warning(f"获取本地IP失败: {e}")
 
-    # 6. 如果以上都失败，返回localhost
+    # 5. 如果以上都失败，返回localhost
     logger.info("无法获取服务器IP，使用localhost")
     return "localhost"
 

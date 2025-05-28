@@ -3,7 +3,7 @@
 
 """
 MCP服务器入口
-启动MCP服务器，注册工具、资源、提示模板和采样配置
+启动MCP服务器，注册工具、资源、提示模板
 """
 
 import sys
@@ -17,7 +17,6 @@ from utils.html_server import generate_test_html, is_nginx_available
 from src.tools import register_all_tools
 from src.resources import register_all_resources
 from src.prompts import register_all_prompts
-from src.sampling import register_all_sampling
 
 # 设置日志
 logger = setup_logging('quant_mcp.server')
@@ -39,7 +38,6 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
     register_all_tools(mcp)      # 注册工具
     register_all_resources(mcp)  # 注册资源
     register_all_prompts(mcp)    # 注册提示模板
-    register_all_sampling(mcp)   # 注册采样配置
 
     return mcp
 
