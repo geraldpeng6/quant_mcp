@@ -225,8 +225,52 @@ start_services() {
 show_service_info() {
     echo -e "${YELLOW}获取服务信息...${NC}"
     
-    # 获取EC2实例公网IP
-    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+    # 获取公网IP - 一种方法成功即返回
+    get_public_ip() {
+        local IP=""
+        
+        # 方法1: 使用外部服务
+        echo -e "${YELLOW}尝试使用checkip.amazonaws.com获取IP...${NC}"
+        IP=$(curl -s -m 3 https://checkip.amazonaws.com 2>/dev/null)
+        if [[ -n "$IP" && "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$IP"
+            return
+        fi
+        
+        # 方法2: 使用外部服务备选
+        echo -e "${YELLOW}尝试使用ifconfig.me获取IP...${NC}"
+        IP=$(curl -s -m 3 https://ifconfig.me 2>/dev/null)
+        if [[ -n "$IP" && "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$IP"
+            return
+        fi
+        
+        # 方法3: 使用ip命令获取本地IP
+        echo -e "${YELLOW}尝试使用ip命令获取IP...${NC}"
+        if command -v ip >/dev/null 2>&1; then
+            IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+            if [[ -n "$IP" ]]; then
+                echo "$IP"
+                return
+            fi
+        fi
+        
+        # 方法4: 使用ifconfig命令获取本地IP
+        echo -e "${YELLOW}尝试使用ifconfig命令获取IP...${NC}"
+        if command -v ifconfig >/dev/null 2>&1; then
+            IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -n 1)
+            if [[ -n "$IP" ]]; then
+                echo "$IP"
+                return
+            fi
+        fi
+        
+        # 如果所有方法都失败，返回localhost
+        echo "localhost"
+    }
+    
+    PUBLIC_IP=$(get_public_ip)
+    echo -e "${GREEN}成功获取IP: $PUBLIC_IP${NC}"
     
     echo -e "${GREEN}部署完成!${NC}"
     echo -e "${GREEN}MCP服务器地址: http://$PUBLIC_IP:$PORT${NC}"
