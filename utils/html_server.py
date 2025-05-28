@@ -16,8 +16,10 @@ import subprocess
 import json
 from typing import Optional, Tuple, Dict, Any
 
+from utils.logging_utils import setup_logging, log_exception
+
 # 获取日志记录器
-logger = logging.getLogger('quant_mcp.html_server')
+logger = setup_logging('quant_mcp.html_server')
 
 # 默认配置
 DEFAULT_SERVER_PORT = 8081  # 本地开发环境使用8081端口
@@ -53,7 +55,8 @@ def load_config() -> Dict[str, Any]:
                 config.update(user_config)
                 logger.info(f"已加载HTML服务器配置: {DEFAULT_CONFIG_FILE}")
         except Exception as e:
-            logger.warning(f"加载HTML服务器配置失败: {e}")
+            log_exception(logger, f"加载HTML服务器配置失败")
+            logger.warning(f"使用默认配置")
 
     return config
 

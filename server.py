@@ -15,14 +15,17 @@ from typing import Dict, Any, Optional, List, Tuple
 from mcp.server.fastmcp import FastMCP
 from mcp.server.middleware import Middleware
 
-from utils.logging_utils import setup_logging, format_json_for_log
+from utils.logging_utils import setup_logging, format_json_for_log, log_exception, configure_root_logger
 from utils.html_server import generate_test_html, is_nginx_available
 from utils.auth_utils import set_auth_from_mcp, set_auto_approve_tools
 from src.tools import register_all_tools
 from src.resources import register_all_resources
 from src.prompts import register_all_prompts
 
-# 设置日志
+# 首先配置根日志记录器，确保捕获所有日志
+configure_root_logger()
+
+# 设置应用日志
 logger = setup_logging('quant_mcp.server')
 
 class AuthMiddleware(Middleware):
@@ -34,52 +37,64 @@ class AuthMiddleware(Middleware):
     
     def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """处理请求，提取认证信息"""
-        # 从client_info中获取MCP客户端配置
-        client_info = request.get("client_info", {})
-        mcp_config = client_info.get("mcp_config", {})
-        
-        # 记录详细的请求信息，但不记录实际token值
-        debug_config = {k: v if k != 'token' else '***' for k, v in mcp_config.items()} if mcp_config else {}
-        logger.debug(f"接收到MCP配置: {format_json_for_log(debug_config)}")
-        
-        # 从quant_sse配置节点获取认证信息
-        config = mcp_config.get(self.config_section, {})
-        token = config.get("token")
-        user_id = config.get("user_id")
-        
-        # 尝试从两种可能的字段名称获取自动批准工具列表
-        auto_approve_tools = config.get("auto_approve_tools", config.get("autoApprove", []))
-        
-        if token and user_id:
-            logger.info(f"从客户端配置获取到认证信息，用户ID: {user_id[:4]}***")
-            # 设置认证信息
-            set_auth_from_mcp(token, user_id)
+        try:
+            # 从client_info中获取MCP客户端配置
+            client_info = request.get("client_info", {})
+            mcp_config = client_info.get("mcp_config", {})
             
-            # 设置自动批准工具列表
-            if auto_approve_tools:
-                logger.info(f"从客户端配置获取到自动批准工具列表: {auto_approve_tools}")
-                set_auto_approve_tools(auto_approve_tools)
-        else:
-            logger.warning("从客户端配置中未获取到完整认证信息")
-        
-        return request
+            # 记录详细的请求信息，但不记录实际token值
+            debug_config = {k: v if k != 'token' else '***' for k, v in mcp_config.items()} if mcp_config else {}
+            logger.debug(f"接收到MCP配置: {format_json_for_log(debug_config)}")
+            
+            # 从quant_sse配置节点获取认证信息
+            config = mcp_config.get(self.config_section, {})
+            token = config.get("token")
+            user_id = config.get("user_id")
+            
+            # 尝试从两种可能的字段名称获取自动批准工具列表
+            auto_approve_tools = config.get("auto_approve_tools", config.get("autoApprove", []))
+            
+            if token and user_id:
+                logger.info(f"从客户端配置获取到认证信息，用户ID: {user_id[:4]}***")
+                # 设置认证信息
+                set_auth_from_mcp(token, user_id)
+                
+                # 设置自动批准工具列表
+                if auto_approve_tools:
+                    logger.info(f"从客户端配置获取到自动批准工具列表: {auto_approve_tools}")
+                    set_auto_approve_tools(auto_approve_tools)
+            else:
+                logger.warning("从客户端配置中未获取到完整认证信息")
+            
+            return request
+        except Exception as e:
+            log_exception(logger, "处理认证请求时发生错误")
+            return request
 
 class LoggingMiddleware(Middleware):
     """日志中间件，记录请求和响应信息"""
     
     def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """处理请求，记录请求信息"""
-        # 避免记录过大的响应，只记录基本信息
-        safe_request = self._sanitize_data(request)
-        logger.info(f"请求: {format_json_for_log(safe_request)}")
-        return request
+        try:
+            # 避免记录过大的响应，只记录基本信息
+            safe_request = self._sanitize_data(request)
+            logger.info(f"请求: {format_json_for_log(safe_request)}")
+            return request
+        except Exception as e:
+            log_exception(logger, "记录请求日志时发生错误")
+            return request
     
     def process_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """处理响应，记录响应信息"""
-        # 避免记录过大的响应，只记录基本信息
-        safe_response = self._sanitize_data(response)
-        logger.info(f"响应: {format_json_for_log(safe_response)}")
-        return response
+        try:
+            # 避免记录过大的响应，只记录基本信息
+            safe_response = self._sanitize_data(response)
+            logger.info(f"响应: {format_json_for_log(safe_response)}")
+            return response
+        except Exception as e:
+            log_exception(logger, "记录响应日志时发生错误")
+            return response
     
     def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -124,23 +139,27 @@ def create_server(name: str = "量化交易助手") -> FastMCP:
     Returns:
         FastMCP: MCP服务器实例
     """
-    # 创建FastMCP服务器实例
-    mcp = FastMCP(name, host="0.0.0.0")
-    
-    # 注册中间件
-    mcp.add_middleware(LoggingMiddleware())  # 先添加日志中间件
-    mcp.add_middleware(AuthMiddleware())     # 再添加认证中间件
+    try:
+        # 创建FastMCP服务器实例
+        mcp = FastMCP(name, host="0.0.0.0")
+        
+        # 注册中间件
+        mcp.add_middleware(LoggingMiddleware())  # 先添加日志中间件
+        mcp.add_middleware(AuthMiddleware())     # 再添加认证中间件
 
-    # 注册所有MCP组件
-    register_all_tools(mcp)      # 注册工具
-    register_all_resources(mcp)  # 注册资源
-    register_all_prompts(mcp)    # 注册提示模板
+        # 注册所有MCP组件
+        register_all_tools(mcp)      # 注册工具
+        register_all_resources(mcp)  # 注册资源
+        register_all_prompts(mcp)    # 注册提示模板
 
-    # 打印认证和工具注册状态
-    logger.info(f"MCP服务器 '{name}' 创建完成")
-    logger.info(f"认证中间件已注册，将从MCP客户端获取认证信息")
-    
-    return mcp
+        # 打印认证和工具注册状态
+        logger.info(f"MCP服务器 '{name}' 创建完成")
+        logger.info(f"认证中间件已注册，将从MCP客户端获取认证信息")
+        
+        return mcp
+    except Exception as e:
+        log_exception(logger, f"创建MCP服务器 '{name}' 失败")
+        raise
 
 def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000):
     """
@@ -161,6 +180,11 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         os.makedirs('data/backtest', exist_ok=True)
         os.makedirs('data/templates', exist_ok=True)
 
+        # 记录启动信息
+        logger.info(f"启动MCP服务器，传输协议: {transport}, 主机: {host}, 端口: {port}")
+        logger.info(f"工作目录: {os.getcwd()}")
+        logger.info(f"Python版本: {sys.version}")
+
         # 生成测试HTML文件
         try:
             test_url = generate_test_html()
@@ -179,7 +203,7 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
                 logger.warning("生成测试HTML文件失败")
                 print("警告: 生成测试HTML文件失败", file=sys.stderr)
         except Exception as e:
-            logger.error(f"生成测试HTML文件时发生错误: {e}")
+            log_exception(logger, "生成测试HTML文件时发生错误")
             print(f"错误: 生成测试HTML文件时发生错误: {e}", file=sys.stderr)
 
         # 创建服务器
@@ -231,7 +255,7 @@ def run_server(transport: str = 'stdio', host: str = '0.0.0.0', port: int = 8000
         else:
             raise ValueError(f"不支持的传输协议: {transport}")
     except Exception as e:
-        logger.error(f"启动MCP服务器失败: {e}")
+        log_exception(logger, f"启动MCP服务器失败")
         print(f"错误: 启动MCP服务器失败: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -247,9 +271,18 @@ if __name__ == "__main__":
                         help='主机地址，当使用 sse 或 streamable-http 传输协议时有效')
     parser.add_argument('--port', '-p', type=int, default=8000,
                         help='端口号，当使用 sse 或 streamable-http 传输协议时有效')
+    parser.add_argument('--log-level', '-l', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                        help='日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
 
     # 解析命令行参数
     args = parser.parse_args()
+    
+    # 设置日志级别
+    log_level = getattr(logging, args.log_level)
+    logging.getLogger().setLevel(log_level)
+    logger.setLevel(log_level)
+    logger.info(f"日志级别设置为: {args.log_level}")
 
     # 运行服务器
     run_server(transport=args.transport, host=args.host, port=args.port)
