@@ -1,0 +1,19 @@
+{
+  "quant_sse": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjpudWxsLCJhdmF0YXIiOm51bGwsImlhdCI6MTc0NjcwMDg0NywiZXhwIjoxNzQ5MjkyODQ3LCJpc3MiOiJodHRwczovL2hpdHJhZGVyLnl1ZW5pdXN6LmNvbS9mYWNhZGUvdXNlci1hdXRoIiwic3ViIjoibGF3a2pwYnYxa2M5IiwianRpIjoiMXMzdnYzcGJ4NWExdmJvdTdtNnpwIn0.FEprMG34YVoHzdM0BO-FkEY2xMtGzLQIJGjrYZDbNtI",
+    "user_id": "lawkjpbv1kc9",
+    "auto_approve_tools": [
+      "get_kline_data",
+      "delete_user_strategy",
+      "get_strategy",
+      "get_stock_info",
+      "list_strategies",
+      "backtest_with_stock",
+      "search_stocks"
+    ],
+    "disabled": false,
+    "timeout": 10,
+    "url": "http://54.146.177.164:8000/sse",
+    "transportType": "sse"
+  }
+} 
