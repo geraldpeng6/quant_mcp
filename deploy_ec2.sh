@@ -372,7 +372,7 @@ setup_nginx_proxy() {
     # 创建反向代理配置
     cat > /tmp/mcp_proxy.conf << EOF
 server {
-    listen $PORT;
+    listen 80;  # 使用标准HTTP端口80，而不是与MCP相同的端口
     server_name _;
 
     # 允许跨域访问
