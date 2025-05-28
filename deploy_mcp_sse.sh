@@ -12,13 +12,10 @@ NC='\033[0m' # No Color
 
 # Default configuration
 PORT=8000
-HOST=$(hostname -I | awk '{print $1}')
-LOG_FILE="./data/logs/mcp_deployment_$(date +"%Y%m%d_%H%M%S").log"
+HOST=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+LOG_FILE="./mcp_deployment_$(date +"%Y%m%d_%H%M%S").log"
 TEST_SYMBOL="300888"
 WAIT_TIME=5
-
-# Create necessary directories
-mkdir -p ./data/logs
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -94,6 +91,10 @@ trap kill_server EXIT
 echo -e "${YELLOW}Starting MCP server with SSE transport on port $PORT...${NC}"
 echo -e "${YELLOW}Server logs will be saved to $LOG_FILE${NC}"
 
+# Make data directories if they don't exist, but don't error if we can't
+mkdir -p data/logs data/klines data/charts data/temp data/config data/backtest data/templates 2>/dev/null || true
+
+# Start the server with redirected output to a file in the current directory
 python3 server.py --transport sse --port $PORT --log-level INFO > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 
@@ -114,13 +115,19 @@ sleep $WAIT_TIME
 if ! kill -0 $SERVER_PID 2>/dev/null; then
     echo -e "${RED}Error: MCP server crashed during initialization.${NC}"
     echo -e "${RED}Check the log file for details: $LOG_FILE${NC}"
-    cat "$LOG_FILE" | tail -20
+    
+    if [ -f "$LOG_FILE" ]; then
+        cat "$LOG_FILE" | tail -20
+    else
+        echo -e "${RED}Log file not found.${NC}"
+    fi
+    
     exit 1
 fi
 
 # Run the test script
 echo -e "${YELLOW}Testing MCP SSE deployment with symbol $TEST_SYMBOL...${NC}"
-./test_mcp_deployment.sh --host "$HOST" --port "$PORT" --symbol "$TEST_SYMBOL" --timeout 10
+./test_mcp_deployment.sh --host "localhost" --port "$PORT" --symbol "$TEST_SYMBOL" --timeout 10
 
 # Check the test result
 TEST_RESULT=$?
@@ -148,6 +155,13 @@ if [ $TEST_RESULT -eq 0 ]; then
 else
     echo -e "${RED}MCP SSE deployment test failed.${NC}"
     echo -e "${RED}Check the server logs for details: $LOG_FILE${NC}"
+    
+    # Display the last 30 lines of the log file
+    if [ -f "$LOG_FILE" ]; then
+        echo -e "${YELLOW}Last 30 lines of the log file:${NC}"
+        tail -30 "$LOG_FILE"
+    fi
+    
     kill_server
     exit 1
 fi

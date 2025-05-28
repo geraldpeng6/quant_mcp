@@ -107,8 +107,10 @@ CURL_PID=$!
 
 # Wait for some data or timeout
 WAITED=0
-INTERVAL=0.5
-while [ $WAITED -lt $TIMEOUT ]; do
+INTERVAL=1  # Using integer value to avoid arithmetic issues
+
+# Wait for the curl process to complete or timeout
+for ((i=1; i<=$TIMEOUT; i++)); do
   if ! kill -0 $CURL_PID 2>/dev/null; then
     break
   fi
@@ -120,8 +122,7 @@ while [ $WAITED -lt $TIMEOUT ]; do
     fi
   fi
   
-  sleep $INTERVAL
-  WAITED=$(echo "$WAITED + $INTERVAL" | bc)
+  sleep 1
 done
 
 # If curl is still running, kill it
