@@ -441,32 +441,12 @@ EOF
         # 确保charts目录存在
         mkdir -p data/charts
         
-        # 设置关键权限 - 这是最重要的部分
-        echo -e "${YELLOW}设置charts目录关键权限...${NC}"
-        
-        # 为Nginx用户设置正确的所有者(最关键的部分)
-        if getent passwd www-data >/dev/null 2>&1; then
-            sudo chown -R www-data:www-data data/charts
-            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
-        elif getent passwd nginx >/dev/null 2>&1; then
-            sudo chown -R nginx:nginx data/charts
-            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
-        else
-            echo -e "${YELLOW}警告: 未找到www-data或nginx用户，尝试使用当前用户${NC}"
+        # 关键修复：设置/home/ubuntu目录权限
+        echo -e "${YELLOW}设置关键路径权限...${NC}"
+        if [ -d "/home/$(whoami)" ]; then
+            sudo chmod 755 "/home/$(whoami)"
+            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
         fi
-        
-        # 设置目录权限
-        sudo chmod -R 755 data/charts
-        sudo find data/charts -type f -exec sudo chmod 644 {} \;
-        
-        # 确保整个路径都可被访问
-        echo -e "${YELLOW}确保完整路径权限...${NC}"
-        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
-            if [ -d "$DIR" ]; then
-                sudo chmod 755 "$DIR"
-                echo -e "${GREEN}已设置目录权限: $DIR${NC}"
-            fi
-        done
         
         # 测试配置
         echo -e "${YELLOW}测试Nginx配置...${NC}"
@@ -492,10 +472,8 @@ EOF
         
         create_nginx_config "$NGINX_CONF_DIR/mcp_html_server.conf"
         
-        # 确保charts目录存在并具有正确的权限
+        # 确保charts目录存在
         mkdir -p data/charts
-        chmod -R 755 data/charts
-        find data/charts -type f -exec chmod 644 {} \;
         
         # 测试配置
         if nginx -t; then
@@ -769,38 +747,19 @@ except Exception as e:
     
     echo -e "${YELLOW}HTML文件访问问题 (HTTP $HTTP_STATUS), 开始修复...${NC}"
     
-    # 直接应用权限修复 - 这是解决问题的关键
+    # 直接应用关键权限修复 - 设置/home/ubuntu目录权限
     if [ "$MACHINE" = "Linux" ]; then
         echo -e "${YELLOW}应用关键权限修复...${NC}"
         
-        # 1. 修复文件所有者 (最关键的部分)
-        if getent passwd www-data >/dev/null 2>&1; then
-            sudo chown -R www-data:www-data data/charts
-            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
-        elif getent passwd nginx >/dev/null 2>&1; then
-            sudo chown -R nginx:nginx data/charts
-            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
+        # 解决权限问题的关键步骤: 设置用户主目录权限为755
+        if [ -d "/home/$(whoami)" ]; then
+            sudo chmod 755 "/home/$(whoami)"
+            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
         fi
         
-        # 2. 修复文件权限
-        sudo chmod -R 755 data/charts
-        sudo find data/charts -type f -exec sudo chmod 644 {} \;
-        
-        # 3. 确保整个路径权限正确
-        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
-            if [ -d "$DIR" ]; then
-                sudo chmod 755 "$DIR"
-            fi
-        done
-        
-        # 4. 重启Nginx
+        # 重启Nginx
         echo -e "${YELLOW}重启Nginx...${NC}"
         sudo systemctl restart nginx || sudo service nginx restart || sudo nginx -s reload
-    elif [ "$MACHINE" = "Mac" ]; then
-        # MacOS权限修复
-        chmod -R 755 data/charts
-        find data/charts -type f -exec chmod 644 {} \;
-        brew services restart nginx
     fi
     
     # 重新测试访问
@@ -912,29 +871,11 @@ redeploy() {
         # 确保charts目录存在
         mkdir -p data/charts
         
-        # 设置文件所有者为www-data或nginx (最关键的部分)
-        if getent passwd www-data >/dev/null 2>&1; then
-            sudo chown -R www-data:www-data data/charts
-            echo -e "${GREEN}已设置www-data为charts目录所有者${NC}"
-        elif getent passwd nginx >/dev/null 2>&1; then
-            sudo chown -R nginx:nginx data/charts
-            echo -e "${GREEN}已设置nginx为charts目录所有者${NC}"
+        # 关键步骤: 设置用户主目录权限
+        if [ -d "/home/$(whoami)" ]; then
+            sudo chmod 755 "/home/$(whoami)"
+            echo -e "${GREEN}已设置用户主目录权限: /home/$(whoami)${NC}"
         fi
-        
-        # 设置目录和文件权限
-        sudo chmod -R 755 data/charts
-        sudo find data/charts -type f -exec sudo chmod 644 {} \;
-        
-        # 确保整个路径可访问
-        for DIR in "/" "/home" "/home/$(whoami)" "$(pwd)" "$(pwd)/data"; do
-            if [ -d "$DIR" ]; then
-                sudo chmod 755 "$DIR"
-                echo -e "${GREEN}已设置目录权限: $DIR${NC}"
-            fi
-        done
-    elif [ "$MACHINE" = "Mac" ]; then
-        chmod -R 755 data/charts
-        find data/charts -type f -exec chmod 644 {} \;
     fi
     
     if [ "$MACHINE" = "Linux" ]; then
@@ -954,7 +895,7 @@ redeploy() {
     echo -e "   http://服务器IP:$HTML_PORT/charts/test.html"
     echo -e "2. 如果无法访问，可尝试以下操作:"
     echo -e "   - 重启Nginx: sudo systemctl restart nginx"
-    echo -e "   - 检查权限: sudo chown -R www-data:www-data $(pwd)/data/charts"
+    echo -e "   - 设置用户主目录权限: sudo chmod 755 /home/ubuntu"
     echo -e "   - 查看日志: sudo tail -f /var/log/nginx/error.log"
     echo -e "3. charts目录位于: $(pwd)/data/charts"
 }
