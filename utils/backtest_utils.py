@@ -1275,7 +1275,8 @@ def run_backtest(
         start_time = time.time()
         position_count = 0
         no_new_data_count = 0
-        max_no_new_data_count = 5  # 如果连续5秒没有新数据，认为回测可能已经完成
+        max_no_new_data_count = 10  # 增加到10秒无新数据才结束，以确保有足够时间接收数据
+        min_positions_required = 5  # 需要至少收到5条数据才考虑提前结束
 
         try:
             while time.time() - start_time < listen_time:
@@ -1288,15 +1289,21 @@ def run_backtest(
                 else:
                     no_new_data_count += 1  # 增加无新数据计数器
                 
-                # 如果已经接收到足够的数据（至少10条）并且连续5秒没有新数据，可以提前结束
-                if position_count >= 10 and no_new_data_count >= max_no_new_data_count:
-                    logger.info(f"已接收到{position_count}条数据，且连续{no_new_data_count}秒无新数据，提前结束监听")
+                # 提前结束条件：
+                # 1. 已经收集了足够的数据（至少min_positions_required条）
+                # 2. 连续max_no_new_data_count秒没有新数据
+                # 3. 已经过去了至少30秒（确保给回测系统足够的启动时间）
+                elapsed_time = time.time() - start_time
+                if (position_count >= min_positions_required and 
+                    no_new_data_count >= max_no_new_data_count and 
+                    elapsed_time >= 30):
+                    logger.info(f"已接收到{position_count}条数据，且连续{no_new_data_count}秒无新数据，提前结束监听（已等待{elapsed_time:.1f}秒）")
                     break
 
                 # 每秒检查一次
                 time.sleep(1)
 
-            logger.info(f"监听结束，共收到{len(mqtt_client.position_data)}条position数据")
+            logger.info(f"监听结束，共收到{len(mqtt_client.position_data)}条position数据，用时: {time.time() - start_time:.1f}秒")
 
             # 保存position数据
             file_path = mqtt_client.save_position_data(strategy_id, strategy_name)
