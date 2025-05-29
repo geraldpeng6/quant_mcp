@@ -60,26 +60,59 @@ def load_config() -> Dict[str, Any]:
 
 def get_ec2_metadata() -> Optional[str]:
     """
-    获取EC2实例元数据
-
-    尝试从EC2元数据服务获取实例的公网IP
+    从EC2元数据服务获取实例信息
 
     Returns:
-        Optional[str]: EC2实例的公网IP，如果获取失败则返回None
+        Optional[str]: 实例的公网IP地址，如果获取失败则返回None
     """
     try:
-        # EC2元数据服务的URL
-        # 参考: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
-        metadata_url = "http://169.254.169.254/latest/meta-data/public-ipv4"
-        response = requests.get(metadata_url, timeout=2)
+        # 尝试从EC2元数据服务获取公网IP地址
+        response = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4', timeout=2)
         if response.status_code == 200:
             public_ip = response.text.strip()
             logger.info(f"从EC2元数据服务获取到公网IP: {public_ip}")
             return public_ip
-    except Exception as e:
-        logger.debug(f"获取EC2元数据失败: {e}")
 
-    return None
+        # 如果获取公网IP失败，尝试获取私网IP
+        response = requests.get('http://169.254.169.254/latest/meta-data/local-ipv4', timeout=2)
+        if response.status_code == 200:
+            private_ip = response.text.strip()
+            logger.info(f"从EC2元数据服务获取到私网IP: {private_ip}")
+            # 尝试通过外部服务获取公网IP
+            try:
+                response = requests.get('https://api.ipify.org', timeout=5)
+                if response.status_code == 200:
+                    public_ip = response.text.strip()
+                    logger.info(f"从ipify服务获取到公网IP: {public_ip}")
+                    return public_ip
+            except Exception as e:
+                logger.warning(f"从ipify获取公网IP失败: {e}")
+            # 如果无法获取公网IP，返回私网IP
+            return private_ip
+
+        # 如果无法获取元数据，返回None
+        logger.warning("无法从EC2元数据服务获取IP地址")
+        return None
+
+    except requests.exceptions.RequestException as e:
+        # 如果请求元数据服务失败，可能不是在EC2环境中
+        logger.warning(f"请求EC2元数据服务失败: {e}")
+        
+        # 尝试使用其他方法获取公网IP
+        try:
+            for service in ['https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com']:
+                try:
+                    response = requests.get(service, timeout=5)
+                    if response.status_code == 200:
+                        public_ip = response.text.strip()
+                        logger.info(f"从{service}获取到公网IP: {public_ip}")
+                        return public_ip
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(f"获取公网IP失败: {e}")
+        
+        return None
 
 
 def get_server_host() -> str:
@@ -87,62 +120,126 @@ def get_server_host() -> str:
     获取服务器主机地址
 
     按以下顺序尝试获取服务器主机地址:
-    1. 从环境变量MCP_SERVER_HOST获取
-    2. 从配置文件获取
-    3. 如果在EC2环境中，从EC2元数据服务获取
-    4. 尝试从公网IP服务获取
-    5. 尝试获取本地IP
-    6. 如果以上都失败，返回localhost
+    1. 从环境变量MCP_PUBLIC_IP或MCP_SERVER_HOST获取
+    2. 从缓存文件获取之前保存的IP
+    3. 从配置文件获取
+    4. 如果在EC2环境中，从EC2元数据服务获取
+    5. 尝试从公网IP服务获取
+    6. 尝试获取本地IP
+    7. 如果以上都失败，返回localhost
 
     Returns:
         str: 服务器主机地址
     """
-    # 1. 从环境变量获取
+    # 1. 从环境变量获取 - 优先使用PUBLIC_IP
+    env_public_ip = os.environ.get('MCP_PUBLIC_IP')
+    if env_public_ip:
+        logger.info(f"从环境变量MCP_PUBLIC_IP获取服务器主机地址: {env_public_ip}")
+        save_ip_to_cache(env_public_ip)  # 保存到缓存
+        return env_public_ip
+    
     env_host = os.environ.get('MCP_SERVER_HOST')
     if env_host:
-        logger.info(f"从环境变量获取服务器主机地址: {env_host}")
+        logger.info(f"从环境变量MCP_SERVER_HOST获取服务器主机地址: {env_host}")
+        save_ip_to_cache(env_host)  # 保存到缓存
         return env_host
 
-    # 2. 从配置文件获取
+    # 2. 从缓存文件获取
+    cached_ip = get_ip_from_cache()
+    if cached_ip:
+        logger.info(f"从缓存文件获取服务器主机地址: {cached_ip}")
+        return cached_ip
+
+    # 3. 从配置文件获取
     config = load_config()
     if config.get('server_host'):
         logger.info(f"从配置文件获取服务器主机地址: {config['server_host']}")
+        save_ip_to_cache(config['server_host'])  # 保存到缓存
         return config['server_host']
 
     # 检查是否是生产环境
     is_production = os.environ.get('MCP_ENV') == 'production'
 
-    # 3. 如果在EC2环境中，从EC2元数据服务获取
+    # 4. 如果在EC2环境中，从EC2元数据服务获取
     if is_production and config.get('use_ec2_metadata', True):
         ec2_ip = get_ec2_metadata()
         if ec2_ip:
+            save_ip_to_cache(ec2_ip)  # 保存到缓存
             return ec2_ip
 
-    # 4. 尝试从公网IP服务获取
+    # 5. 尝试从公网IP服务获取
     if is_production and config.get('use_public_ip', True):
         try:
-            response = requests.get('https://api.ipify.org', timeout=5)
-            if response.status_code == 200:
-                public_ip = response.text.strip()
-                logger.info(f"从公网IP服务获取到IP: {public_ip}")
-                return public_ip
+            # 尝试多个服务
+            for service in ['https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com']:
+                try:
+                    response = requests.get(service, timeout=5)
+                    if response.status_code == 200:
+                        public_ip = response.text.strip()
+                        logger.info(f"从{service}获取到公网IP: {public_ip}")
+                        save_ip_to_cache(public_ip)  # 保存到缓存
+                        return public_ip
+                except Exception:
+                    continue
         except Exception as e:
             logger.warning(f"获取公网IP失败: {e}")
 
-    # 5. 尝试获取本地IP
+    # 6. 尝试获取本地IP
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
         logger.info(f"获取到本地IP: {local_ip}")
+        # 本地IP不保存到缓存
         return local_ip
     except Exception as e:
         logger.warning(f"获取本地IP失败: {e}")
 
-    # 6. 如果以上都失败，返回localhost
+    # 7. 如果以上都失败，返回localhost
     logger.info("无法获取服务器IP，使用localhost")
     return "localhost"
+
+
+def get_ip_from_cache() -> Optional[str]:
+    """
+    从缓存文件获取IP地址
+
+    Returns:
+        Optional[str]: 缓存的IP地址，如果没有则返回None
+    """
+    cache_file = "data/config/ip_cache.txt"
+    try:
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                ip = f.read().strip()
+                if ip:
+                    return ip
+    except Exception as e:
+        logger.warning(f"读取IP缓存文件失败: {e}")
+    return None
+
+
+def save_ip_to_cache(ip: str) -> bool:
+    """
+    保存IP地址到缓存文件
+
+    Args:
+        ip: IP地址
+
+    Returns:
+        bool: 是否保存成功
+    """
+    cache_dir = "data/config"
+    cache_file = f"{cache_dir}/ip_cache.txt"
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_file, 'w') as f:
+            f.write(ip)
+        return True
+    except Exception as e:
+        logger.warning(f"保存IP到缓存文件失败: {e}")
+        return False
 
 
 def get_html_url(file_path: str) -> str:
@@ -164,7 +261,7 @@ def get_html_url(file_path: str) -> str:
     if DEFAULT_SERVER_HOST is None:
         DEFAULT_SERVER_HOST = get_server_host()
 
-    # 获取服务器端口
+    # 获取服务器端口 - 只用于调试输出
     server_port = config.get('server_port', DEFAULT_SERVER_PORT)
 
     # 获取charts目录
@@ -181,9 +278,17 @@ def get_html_url(file_path: str) -> str:
     # 提取相对路径
     rel_path = os.path.relpath(abs_file_path, charts_dir)
 
-    # 构建URL
-    url = f"http://{DEFAULT_SERVER_HOST}:{server_port}/charts/{rel_path}"
-    logger.debug(f"生成HTML URL: {url}")
+    # 检查是否在EC2/生产环境中
+    is_production = os.environ.get('MCP_ENV') == 'production'
+    
+    # 构建URL - 在生产环境中移除端口号，使用Nginx代理
+    if is_production:
+        url = f"http://{DEFAULT_SERVER_HOST}/charts/{rel_path}"
+        logger.debug(f"生成生产环境HTML URL(无端口): {url}")
+    else:
+        # 本地开发环境保留端口号
+        url = f"http://{DEFAULT_SERVER_HOST}:{server_port}/charts/{rel_path}"
+        logger.debug(f"生成开发环境HTML URL(含端口): {url}")
 
     return url
 
