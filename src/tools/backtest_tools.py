@@ -32,9 +32,9 @@ async def run_strategy_backtest(
 
     Args:
         strategy_id: 策略ID
-        listen_time: 监听和处理时间（秒），默认180秒。对于大型回测请增加此值以避免客户端超时。
-                    注意：此值可以设置得比较大（最大600秒），因为回测系统会在没有新数据时提前结束监听。
-                    服务器会在连续5秒没有新数据且已收集到至少10条记录时提前返回结果。
+        listen_time: 监听和处理时间（秒），默认180秒。对于大型回测请根据需要增加此值，无上限限制。
+                    系统会在回测数据收集完成后提前返回结果，因此设置较长时间不会有性能问题。
+                    服务器会在连续10秒没有新数据且已收集到至少5条记录且至少运行30秒后提前返回结果。
         start_date: 回测开始日期，格式为 "YYYY-MM-DD"，可选，默认为一年前
         end_date: 回测结束日期，格式为 "YYYY-MM-DD"，可选，默认为今天
         indicator: 自定义指标代码，可选
@@ -48,12 +48,8 @@ async def run_strategy_backtest(
     Returns:
         str: 回测结果信息，或错误信息
     """
-    # 检查listen_time是否超过安全值，如果超过则发出警告
-    max_listen_time = 600  # 最大允许600秒
-    if listen_time > max_listen_time:
-        logger.warning(f"listen_time值({listen_time}秒)超过最大允许值({max_listen_time}秒)，自动调整为{max_listen_time}秒")
-        listen_time = max_listen_time
-        
+    # 不再限制listen_time的最大值，允许客户端指定任意时长
+    
     try:
         # 检查策略ID
         if not strategy_id:
